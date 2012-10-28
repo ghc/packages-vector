@@ -16,13 +16,21 @@ module Data.Vector.Generic.New (
   New(..), create, run, runPrim, apply, modify, modifyWithBundle,
   unstream, transform, unstreamR, transformR,
   slice, init, tail, take, drop,
-  unsafeSlice, unsafeInit, unsafeTail
+  unsafeSlice, unsafeInit, unsafeTail,
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  multiunstream
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 ) where
 
 import qualified Data.Vector.Generic.Mutable as MVector
 import           Data.Vector.Generic.Mutable ( MVector )
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import           Data.Vector.Generic.Base ( Vector, PackedVector, Mutable )
+#else /* !defined(__GLASGOW_HASKELL_LLVM__) */
 import           Data.Vector.Generic.Base ( Vector, Mutable )
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 
 import           Data.Vector.Fusion.Bundle ( Bundle, MBundle )
 import qualified Data.Vector.Fusion.Bundle as Bundle
@@ -175,3 +183,42 @@ unsafeTail m = apply MVector.unsafeTail m
 
   #-}
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+multiunstream :: PackedVector v a => Bundle v a -> New v a
+{-# INLINE_FUSED multiunstream #-}
+multiunstream s = s `seq` New (MVector.vmultiunstream s)
+{-# RULES
+
+"transform/multiunstream [New]"
+  forall (f :: forall m. Monad m => Stream m a -> Stream m a)
+         g s.
+  transform f g (multiunstream s) = multiunstream (Bundle.inplace f g s)
+
+ #-}
+
+{-# RULES
+"slice/multiunstream [New]" forall i n s.
+  slice i n (multiunstream s) = multiunstream (Bundle.slice i n s)
+
+"init/multiunstream [New]" forall s.
+  init (multiunstream s) = multiunstream (Bundle.init s)
+
+"tail/multiunstream [New]" forall s.
+  tail (multiunstream s) = multiunstream (Bundle.tail s)
+
+"take/multiunstream [New]" forall n s.
+  take n (multiunstream s) = multiunstream (Bundle.take n s)
+
+"drop/multiunstream [New]" forall n s.
+  drop n (multiunstream s) = multiunstream (Bundle.drop n s)
+
+"unsafeSlice/multiunstream [New]" forall i n s.
+  unsafeSlice i n (multiunstream s) = multiunstream (Bundle.slice i n s)
+
+"unsafeInit/multiunstream [New]" forall s.
+  unsafeInit (multiunstream s) = multiunstream (Bundle.init s)
+
+"unsafeTail/multiunstream [New]" forall s.
+  unsafeTail (multiunstream s) = multiunstream (Bundle.tail s)
+ #-}
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */

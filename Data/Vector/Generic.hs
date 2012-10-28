@@ -157,7 +157,37 @@ module Data.Vector.Generic (
   showsPrec, readPrec,
 
   -- ** @Data@ and @Typeable@
-  gfoldl, dataCast, mkType
+  gfoldl, dataCast, mkType,
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  PackedVector(..),
+
+  -- ** Indexing
+  munsafeIndex,
+
+  -- ** Mapping
+  mmap,
+
+  -- ** Monadic mapping
+  mmapM, mmapM_,
+
+  -- ** Zipping
+  mzipWith,
+
+  -- ** Monadic zipping
+  mzipWithM, mzipWithM_,
+
+  -- * Folding
+  mfoldl, mfoldl',
+  mfold, mfold',
+
+  -- ** Monadic folds
+  mfoldM, mfoldM',
+  mfoldM_, mfoldM_',
+
+  -- ** Conversion to/from Streams
+  multistream, multiunstream,
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 ) where
 
 import           Data.Vector.Generic.Base
@@ -175,6 +205,11 @@ import           Data.Vector.Fusion.Stream.Monadic ( Stream )
 import qualified Data.Vector.Fusion.Stream.Monadic as S
 import           Data.Vector.Fusion.Bundle.Size
 import           Data.Vector.Fusion.Util
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import Data.Primitive.Multi
+import Data.Vector.Fusion.MultiStream.Monadic ( MultiStream )
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 import Control.Monad.ST ( ST, runST )
 import Control.Monad.Primitive
@@ -2035,3 +2070,158 @@ dataCast :: (Vector v a, Data a, Typeable1 v, Typeable1 t)
 {-# INLINE dataCast #-}
 dataCast f = gcast1 f
 
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+-- | /O(1)/ Unsafe indexing without bounds checking
+munsafeIndex :: PackedVector v a => v a -> Int -> Multi a
+{-# INLINE_FUSED munsafeIndex #-}
+munsafeIndex v i = UNSAFE_CHECK(checkIndex) "munsafeIndex" i (length v)
+                $ unId (basicUnsafeIndexAsMultiM v i)
+
+{-# RULES
+
+"(!)/multiunstream [Vector]" forall i s.
+  new (New.multiunstream s) ! i = s Bundle.!! i
+
+"(!?)/multiunstream [Vector]" forall i s.
+  new (New.multiunstream s) !? i = s Bundle.!? i
+
+"head/multiunstream [Vector]" forall s.
+  head (new (New.multiunstream s)) = Bundle.head s
+
+"last/multiunstream [Vector]" forall s.
+  last (new (New.multiunstream s)) = Bundle.last s
+
+"unsafeIndex/multiunstream [Vector]" forall i s.
+  unsafeIndex (new (New.multiunstream s)) i = s Bundle.!! i
+
+"unsafeHead/multiunstream [Vector]" forall s.
+  unsafeHead (new (New.multiunstream s)) = Bundle.head s
+
+"unsafeLast/multiunstream [Vector]" forall s.
+  unsafeLast (new (New.multiunstream s)) = Bundle.last s
+
+  #-}
+
+{-# RULES
+
+"indexM/multiunstream [Vector]" forall s i.
+  indexM (new (New.multiunstream s)) i = lift s MBundle.!! i
+
+"headM/multiunstream [Vector]" forall s.
+  headM (new (New.multiunstream s)) = MBundle.head (lift s)
+
+"lastM/multiunstream [Vector]" forall s.
+  lastM (new (New.multiunstream s)) = MBundle.last (lift s)
+
+"unsafeIndexM/multiunstream [Vector]" forall s i.
+  unsafeIndexM (new (New.multiunstream s)) i = lift s MBundle.!! i
+
+"unsafeHeadM/multiunstream [Vector]" forall s.
+  unsafeHeadM (new (New.multiunstream s)) = MBundle.head (lift s)
+
+"unsafeLastM/multiunstream [Vector]" forall s.
+  unsafeLastM (new (New.multiunstream s)) = MBundle.last (lift s)
+
+  #-}
+
+mmap :: (PackedVector v a, PackedVector v b)
+     => (a -> b)
+     -> (Multi a -> Multi b)
+     -> v a
+     -> v b
+{-# INLINE mmap #-}
+mmap p q = multiunstream . MBundle.mmap p q . multistream
+
+-- XXX The @unstreamM@ means we won't actually use Multi operations on the
+-- stream
+mmapM :: (Monad m, PackedVector v a, PackedVector v b)
+      => (a -> m b) -> (Multi a -> m (Multi b)) -> v a -> m (v b)
+{-# INLINE mmapM #-}
+mmapM p q = unstreamM . Bundle.mmapM p q . multistream
+
+mmapM_ :: (Monad m, PackedVector v a)
+       => (a -> m b) -> (Multi a -> m (Multi b)) -> v a -> m ()
+{-# INLINE mmapM_ #-}
+mmapM_ p q = Bundle.mmapM_ p q . multistream
+
+mzipWith :: (PackedVector v a, PackedVector v b, PackedVector v c)
+         => (a -> b -> c) -> (Multi a -> Multi b -> Multi c) -> v a -> v b -> v c
+{-# INLINE mzipWith #-}
+mzipWith p q xs ys = multiunstream (Bundle.mzipWith p q (multistream xs) (multistream ys))
+
+mzipWithM :: (Monad m, PackedVector v a, PackedVector v b, PackedVector v c)
+          => (a -> b -> m c) -> (Multi a -> Multi b -> m (Multi c)) -> v a -> v b -> m (v c)
+{-# INLINE mzipWithM #-}
+mzipWithM p q as bs = unstreamM $ Bundle.mzipWithM p q (multistream as) (multistream bs)
+
+mzipWithM_ :: (Monad m, PackedVector v a, PackedVector v b, PackedVector v c)
+           => (a -> b -> m c) -> (Multi a -> Multi b -> m (Multi c)) -> v a -> v b -> m ()
+{-# INLINE mzipWithM_ #-}
+mzipWithM_ p q as bs = Bundle.mzipWithM_ p q (multistream as) (multistream bs)
+
+mfoldl :: PackedVector v b => (a -> b -> a) -> (a -> Multi b -> a) -> a -> v b -> a
+{-# INLINE mfoldl #-}
+mfoldl p q z = Bundle.mfoldl p q z . multistream
+
+mfoldl' :: PackedVector v b => (a -> b -> a) -> (a -> Multi b -> a) -> a -> v b -> a
+{-# INLINE mfoldl' #-}
+mfoldl' p q z = Bundle.mfoldl' p q z . multistream
+
+mfold :: PackedVector v a
+       => (a -> a -> a)
+       -> (Multi a -> Multi a -> Multi a)
+       -> a
+       -> v a
+       -> a
+{-# INLINE mfold #-}
+mfold p q z = Bundle.mfold p q z . multistream
+
+mfold' :: PackedVector v a
+        => (a -> a -> a)
+        -> (Multi a -> Multi a -> Multi a)
+        -> a
+        -> v a
+        -> a
+{-# INLINE mfold' #-}
+mfold' p q z = Bundle.mfold' p q z . multistream
+
+mfoldM :: (Monad m, PackedVector v b)
+       => (a -> b -> m a) -> (a -> Multi b -> m a) -> a -> v b -> m a
+{-# INLINE mfoldM #-}
+mfoldM p q z = Bundle.mfoldM p q z . multistream
+
+mfoldM' :: (Monad m, PackedVector v b)
+        => (a -> b -> m a) -> (a -> Multi b -> m a) -> a -> v b -> m a
+{-# INLINE mfoldM' #-}
+mfoldM' p q z = Bundle.mfoldM' p q z . multistream
+
+mfoldM_ :: (Monad m, PackedVector v b)
+        => (a -> b -> m a) -> (a -> Multi b -> m a) -> a -> v b -> m ()
+{-# INLINE mfoldM_ #-}
+mfoldM_ p q z = discard . Bundle.mfoldM p q z . multistream
+
+mfoldM_' :: (Monad m, PackedVector v b)
+         => (a -> b -> m a) -> (a -> Multi b -> m a) -> a -> v b -> m ()
+{-# INLINE mfoldM_' #-}
+mfoldM_' p q z = discard . Bundle.mfoldM' p q z . multistream
+
+{-# RULES
+
+"multistream/multiunstream [Vector]" forall s.
+  multistream (new (New.multiunstream s)) = s
+
+"New.multiunstream/multistream [Vector]" forall v.
+  New.multiunstream (multistream v) = clone v
+
+  #-}
+
+multistream :: PackedVector v a => v a -> Bundle v a
+{-# INLINE_FUSED multistream #-}
+multistream v = Bundle.fromPackedVector v
+
+multiunstream :: PackedVector v a => Bundle v a -> v a
+{-# INLINE multiunstream #-}
+multiunstream s = new (New.multiunstream s)
+
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */

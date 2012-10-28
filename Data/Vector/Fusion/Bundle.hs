@@ -73,16 +73,42 @@ module Data.Vector.Fusion.Bundle (
   -- * Monadic combinators
   mapM, mapM_, zipWithM, zipWithM_, filterM, foldM, fold1M, foldM', fold1M',
 
-  eq, cmp
+  eq, cmp,
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  -- * Multi Mapping
+  mmap, mmapM, mmapM_,
+
+  -- * Multi Zipping
+  mzipWith, mzipWithM, mzipWithM_,
+
+  -- * Multi Folding
+  mfoldl, mfoldl',
+  mfoldM, mfoldM',
+  mfold, mfold',
+
+  -- * Conversions
+  fromPackedVector,
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 ) where
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import Data.Vector.Generic.Base ( Vector, PackedVector )
+#else /* !defined(__GLASGOW_HASKELL_LLVM__) */
 import Data.Vector.Generic.Base ( Vector )
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 import Data.Vector.Fusion.Bundle.Size
 import Data.Vector.Fusion.Util
 import Data.Vector.Fusion.Stream.Monadic ( Stream(..), Step(..), SPEC(..) )
 import Data.Vector.Fusion.Bundle.Monadic ( Chunk(..) )
 import qualified Data.Vector.Fusion.Bundle.Monadic as M
 import qualified Data.Vector.Fusion.Stream.Monadic as S
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import Data.Vector.Fusion.MultiStream.Monadic ( MultiStream(..) )
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
+
+import Data.Primitive.Multi
 
 import Prelude hiding ( length, null,
                         replicate, (++),
@@ -126,9 +152,21 @@ inplace f g b = b `seq` M.fromStream (f (M.elements b)) (g (M.size b))
 -- | Convert a pure stream to a monadic stream
 lift :: Monad m => Bundle v a -> M.Bundle m v a
 {-# INLINE_FUSED lift #-}
+#if defined(__GLASGOW_HASKELL_LLVM__)
+lift (M.Bundle (Stream step s) (Left (MultiStream stepm step1 ms)) (Stream vstep t) v sz)
+    = M.Bundle (Stream (return . unId . step) s)
+               (Left (MultiStream (return . unId . stepm) (return . unId . step1) ms))
+               (Stream (return . unId . vstep) t) v sz
+
+lift (M.Bundle (Stream step s) (Right (Stream mstep ms)) (Stream vstep t) v sz)
+    = M.Bundle (Stream (return . unId . step) s)
+               (Right (Stream (return . unId . mstep) ms))
+               (Stream (return . unId . vstep) t) v sz
+#else /* !defined(__GLASGOW_HASKELL_LLVM__) */
 lift (M.Bundle (Stream step s) (Stream vstep t) v sz)
     = M.Bundle (Stream (return . unId . step) s)
                (Stream (return . unId . vstep) t) v sz
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 
 -- | 'Size' hint of a 'Bundle'
 size :: Bundle v a -> Size
@@ -629,3 +667,69 @@ flatten :: (a -> s) -> (s -> Step s b) -> Size -> Bundle v a -> Bundle v b
 {-# INLINE_FUSED flatten #-}
 flatten mk istep sz = M.flatten (return . mk) (return . istep) sz . lift
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+mmap :: (a -> b) -> (Multi a -> Multi b) -> Bundle v a -> Bundle v b
+{-# INLINE mmap #-}
+mmap = M.mmap
+
+mmapM :: Monad m => (a -> m b) -> (Multi a -> m (Multi b)) -> Bundle v a -> M.Bundle m v b
+{-# INLINE mmapM #-}
+mmapM p q = M.mmapM p q . lift
+
+mmapM_ :: Monad m => (a -> m b) -> (Multi a -> m (Multi b)) -> Bundle v a -> m ()
+{-# INLINE mmapM_ #-}
+mmapM_ p q = M.mmapM_ p q . lift
+
+mzipWith :: (a -> b -> c) -> (Multi a -> Multi b -> Multi c)
+         -> Bundle v a -> Bundle v b -> Bundle v c
+{-# INLINE mzipWith #-}
+mzipWith = M.mzipWith
+
+mzipWithM :: Monad m => (a -> b -> m c) -> (Multi a -> Multi b -> m (Multi c))
+          -> Bundle v a -> Bundle v b -> M.Bundle m v c
+{-# INLINE mzipWithM #-}
+mzipWithM p q as bs = M.mzipWithM p q (lift as) (lift bs)
+
+mzipWithM_ :: Monad m => (a -> b -> m c) -> (Multi a -> Multi b -> m (Multi c))
+           -> Bundle v a -> Bundle v b -> m ()
+{-# INLINE mzipWithM_ #-}
+mzipWithM_ p q as bs = M.mzipWithM_ p q (lift as) (lift bs)
+
+mfoldl :: (a -> b -> a) -> (a -> Multi b -> a) -> a -> Bundle v b -> a
+{-# INLINE mfoldl #-}
+mfoldl p q z = unId . M.mfoldl p q z
+
+mfoldl' :: (a -> b -> a) -> (a -> Multi b -> a) -> a -> Bundle v b -> a
+{-# INLINE mfoldl' #-}
+mfoldl' p q z = unId . M.mfoldl' p q z
+
+mfoldM :: Monad m => (a -> b -> m a) -> (a -> Multi b -> m a) -> a -> Bundle v b -> m a
+{-# INLINE mfoldM #-}
+mfoldM p q z = M.mfoldM p q z . lift
+
+mfoldM' :: Monad m => (a -> b -> m a) ->  (a -> Multi b -> m a) -> a -> Bundle v b -> m a
+{-# INLINE mfoldM' #-}
+mfoldM' p q z = M.mfoldM' p q z . lift
+
+mfold :: MultiType a
+      => (a -> a -> a)
+      -> (Multi a -> Multi a -> Multi a)
+      -> a
+      -> Bundle v a
+      -> a
+{-# INLINE mfold #-}
+mfold p q z = unId . M.mfold p q z
+
+mfold' :: MultiType a
+       => (a -> a -> a)
+       -> (Multi a -> Multi a -> Multi a)
+       -> a
+       -> Bundle v a
+       -> a
+{-# INLINE mfold' #-}
+mfold' p q z = unId . M.mfold' p q z
+
+fromPackedVector :: PackedVector v a => v a -> Bundle v a
+{-# INLINE fromPackedVector #-}
+fromPackedVector = M.fromPackedVector
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */

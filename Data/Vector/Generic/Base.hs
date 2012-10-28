@@ -15,9 +15,16 @@
 --
 
 module Data.Vector.Generic.Base (
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  Vector(..), PackedVector(..), Mutable
+#else /* !defined(__GLASGOW_HASKELL_LLVM__) */
   Vector(..), Mutable
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 ) where
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import           Data.Primitive.Multi
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 import           Data.Vector.Generic.Mutable.Base ( MVector )
 import qualified Data.Vector.Generic.Mutable.Base as M
 
@@ -138,3 +145,9 @@ class MVector (Mutable v) a => Vector v a where
   elemseq _ = \_ x -> x
 
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+class (MultiType a, Vector v a, M.PackedMVector (Mutable v) a) => PackedVector v a where
+  -- | Yield the element at the given position in a monad. No range checks are
+  -- performed. The index is given in @a@'s, but the result is a @Multi a@.
+  basicUnsafeIndexAsMultiM  :: Monad m => v a -> Int -> m (Multi a)
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */

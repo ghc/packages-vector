@@ -1,4 +1,4 @@
-{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE FlexibleContexts, Rank2Types #-}
 
 -- |
 -- Module      : Data.Vector.Unboxed
@@ -37,7 +37,7 @@
 
 module Data.Vector.Unboxed (
   -- * Unboxed vectors
-  Vector, MVector(..), Unbox,
+  Vector(..), MVector(..), Unbox,
 
   -- * Accessors
 
@@ -158,13 +158,42 @@ module Data.Vector.Unboxed (
   G.convert,
 
   -- ** Mutable vectors
-  freeze, thaw, copy, unsafeFreeze, unsafeThaw, unsafeCopy
+  freeze, thaw, copy, unsafeFreeze, unsafeThaw, unsafeCopy,
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  -- ** Indexing
+  munsafeIndex,
+
+  -- ** Mapping
+  mmap,
+
+  -- ** Monadic mapping
+  mmapM, mmapM_,
+
+  -- ** Zipping
+  mzipWith,
+
+  -- ** Monadic zipping
+  mzipWithM, mzipWithM_,
+
+  -- * Folding
+  mfoldl, mfoldl',
+  mfold, mfold',
+
+  -- ** Monadic folds
+  mfoldM, mfoldM',
+  mfoldM_, mfoldM_',
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 ) where
 
 import Data.Vector.Unboxed.Base
 import qualified Data.Vector.Generic as G
 import qualified Data.Vector.Fusion.Bundle as Bundle
 import Data.Vector.Fusion.Util ( delayed_min )
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import Data.Primitive.Multi
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 import Control.Monad.ST ( ST )
 import Control.Monad.Primitive
@@ -1366,3 +1395,91 @@ copy = G.copy
 #define DEFINE_IMMUTABLE
 #include "unbox-tuple-instances"
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+-- | /O(1)/ Unsafe indexing without bounds checking
+munsafeIndex :: (G.PackedVector Vector a, Unbox a) => Vector a -> Int -> Multi a
+{-# INLINE munsafeIndex #-}
+munsafeIndex = G.munsafeIndex
+
+mmap :: (Unbox a, Unbox b,
+         G.PackedVector Vector a, G.PackedVector Vector b)
+     => (a -> b) -> (Multi a -> Multi b) -> Vector a -> Vector b
+{-# INLINE mmap #-}
+mmap = G.mmap
+
+mmapM :: (Monad m, Unbox a, Unbox b,
+          G.PackedVector Vector a, G.PackedVector Vector b)
+      => (a -> m b) -> (Multi a -> m (Multi b)) -> Vector a -> m (Vector b)
+{-# INLINE mmapM #-}
+mmapM = G.mmapM
+
+mmapM_ :: (Monad m, Unbox a, Unbox b,
+           G.PackedVector Vector a, G.PackedVector Vector b)
+       => (a -> m b) -> (Multi a -> m (Multi b)) -> Vector a -> m ()
+{-# INLINE mmapM_ #-}
+mmapM_ = G.mmapM_
+
+mzipWith :: (Unbox a, Unbox b, Unbox c,
+             G.PackedVector Vector a, G.PackedVector Vector b, G.PackedVector Vector c)
+        => (a -> b -> c) -> (Multi a -> Multi b -> Multi c) -> Vector a -> Vector b -> Vector c
+{-# INLINE mzipWith #-}
+mzipWith = G.mzipWith
+
+mzipWithM :: (Monad m, Unbox a, Unbox b, Unbox c,
+              G.PackedVector Vector a, G.PackedVector Vector b, G.PackedVector Vector c)
+          => (a -> b -> m c) -> (Multi a -> Multi b -> m (Multi c)) -> Vector a -> Vector b -> m (Vector c)
+{-# INLINE mzipWithM #-}
+mzipWithM = G.mzipWithM
+
+mzipWithM_ :: (Monad m, Unbox a, Unbox b, Unbox c,
+               G.PackedVector Vector a, G.PackedVector Vector b, G.PackedVector Vector c)
+           => (a -> b -> m c) -> (Multi a -> Multi b -> m (Multi c)) -> Vector a -> Vector b -> m ()
+{-# INLINE mzipWithM_ #-}
+mzipWithM_ = G.mzipWithM_
+
+mfoldl :: (Unbox b, G.PackedVector Vector b)
+       => (a -> b -> a) -> (a -> Multi b -> a) -> a -> Vector b -> a
+{-# INLINE mfoldl #-}
+mfoldl = G.mfoldl
+
+mfoldl' :: (Unbox b, G.PackedVector Vector b)
+        => (a -> b -> a) -> (a -> Multi b -> a) -> a -> Vector b -> a
+{-# INLINE mfoldl' #-}
+mfoldl' = G.mfoldl'
+
+mfold :: (Unbox a, G.PackedVector Vector a)
+      => (a -> a -> a)
+      -> (Multi a -> Multi a -> Multi a)
+      -> a
+      -> Vector a -> a
+{-# INLINE mfold #-}
+mfold = G.mfold
+
+mfold' :: (Unbox a, G.PackedVector Vector a)
+       => (a -> a -> a)
+       -> (Multi a -> Multi a -> Multi a)
+       -> a
+       -> Vector a        -> a
+{-# INLINE mfold' #-}
+mfold' = G.mfold'
+
+mfoldM :: (Monad m, Unbox b, G.PackedVector Vector b)
+       => (a -> b -> m a) -> (a -> Multi b -> m a) -> a -> Vector b -> m a
+{-# INLINE mfoldM #-}
+mfoldM = G.mfoldM
+
+mfoldM_ :: (Monad m, Unbox b, G.PackedVector Vector b)
+        => (a -> b -> m a) -> (a -> Multi b -> m a) -> a -> Vector b -> m ()
+{-# INLINE mfoldM_ #-}
+mfoldM_ = G.mfoldM_
+
+mfoldM' :: (Monad m, Unbox b, G.PackedVector Vector b)
+        => (a -> b -> m a) -> (a -> Multi b -> m a) -> a -> Vector b -> m a
+{-# INLINE mfoldM' #-}
+mfoldM' = G.mfoldM'
+
+mfoldM_' :: (Monad m, Unbox b, G.PackedVector Vector b)
+         => (a -> b -> m a) -> (a -> Multi b -> m a) -> a -> Vector b -> m ()
+{-# INLINE mfoldM_' #-}
+mfoldM_' = G.mfoldM_'
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */

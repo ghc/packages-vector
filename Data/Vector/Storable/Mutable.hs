@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances #-}
 
 -- |
 -- Module      : Data.Vector.Storable.Mutable
@@ -61,6 +62,10 @@ import Control.DeepSeq ( NFData )
 
 import qualified Data.Vector.Generic.Mutable as G
 import Data.Vector.Storable.Internal
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import Data.Primitive.Multi
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 import Foreign.Storable
 import Foreign.ForeignPtr
@@ -488,3 +493,16 @@ unsafeWith :: Storable a => IOVector a -> (Ptr a -> IO b) -> IO b
 {-# INLINE unsafeWith #-}
 unsafeWith (MVector n fp) = withForeignPtr fp
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+instance (Storable a, MultiPrim a, Storable (Multi a))
+  => G.PackedMVector MVector a where
+  {-# INLINE basicUnsafeReadAsMulti #-} 
+  basicUnsafeReadAsMulti (MVector _ fp) i
+    = unsafePrimToPrim
+    $ withForeignPtr fp $ \p -> peekByteOff p (i * sizeOf (undefined :: a))
+
+  {-# INLINE basicUnsafeWriteAsMulti #-}
+  basicUnsafeWriteAsMulti (MVector _ fp) i x
+    = unsafePrimToPrim
+    $ withForeignPtr fp $ \p -> pokeByteOff p (i * sizeOf (undefined :: a)) x
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */

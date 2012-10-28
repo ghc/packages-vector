@@ -1,8 +1,10 @@
-{-# LANGUAGE MultiParamTypeClasses, TypeFamilies, FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses, TypeFamilies, FlexibleContexts, FlexibleInstances #-}
 #if __GLASGOW_HASKELL__ >= 707
 {-# LANGUAGE DeriveDataTypeable, StandaloneDeriving #-}
 #endif
 {-# OPTIONS_HADDOCK hide #-}
+
+#include "MachDeps.h"
 
 -- |
 -- Module      : Data.Vector.Unboxed.Base
@@ -29,6 +31,10 @@ import Control.DeepSeq ( NFData )
 
 import Control.Monad.Primitive
 import Control.Monad ( liftM )
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import Data.Primitive.Multi
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 import Data.Word ( Word, Word8, Word16, Word32, Word64 )
 import Data.Int  ( Int8, Int16, Int32, Int64 )
@@ -200,11 +206,32 @@ instance G.Vector Vector ty where {                                     \
 ; basicUnsafeCopy (mcon mv) (con v) = G.basicUnsafeCopy mv v            \
 ; elemseq _ = seq }
 
+#define primPackedMVector(ty,con)                                       \
+instance M.PackedMVector MVector ty where {                             \
+  {-# INLINE basicUnsafeReadAsMulti #-}                                 \
+; {-# INLINE basicUnsafeWriteAsMulti #-}                                \
+; basicUnsafeReadAsMulti (con (P.MVector i _ arr)) j =                  \
+      readByteArrayAsMulti arr (i+j)                                    \
+; basicUnsafeWriteAsMulti (con (P.MVector i _ arr)) j x =               \
+      writeByteArrayAsMulti arr (i+j) x }
+
+#define primPackedVector(ty,con)                                        \
+instance G.PackedVector Vector ty where {                               \
+  {-# INLINE basicUnsafeIndexAsMultiM #-}                               \
+; basicUnsafeIndexAsMultiM (con (P.Vector i _ arr)) j =                 \
+      return $! indexByteArrayAsMulti arr (i+j) }
+
 newtype instance MVector s Int = MV_Int (P.MVector s Int)
 newtype instance Vector    Int = V_Int  (P.Vector    Int)
 instance Unbox Int
 primMVector(Int, MV_Int)
 primVector(Int, V_Int, MV_Int)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+#if WORD_SIZE_IN_BITS == 32 || WORD_SIZE_IN_BITS == 64
+primPackedMVector(Int, MV_Int)
+primPackedVector(Int, V_Int)
+#endif
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 newtype instance MVector s Int8 = MV_Int8 (P.MVector s Int8)
 newtype instance Vector    Int8 = V_Int8  (P.Vector    Int8)
@@ -223,12 +250,20 @@ newtype instance Vector    Int32 = V_Int32  (P.Vector    Int32)
 instance Unbox Int32
 primMVector(Int32, MV_Int32)
 primVector(Int32, V_Int32, MV_Int32)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+primPackedMVector(Int32, MV_Int32)
+primPackedVector(Int32, V_Int32)
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 newtype instance MVector s Int64 = MV_Int64 (P.MVector s Int64)
 newtype instance Vector    Int64 = V_Int64  (P.Vector    Int64)
 instance Unbox Int64
 primMVector(Int64, MV_Int64)
 primVector(Int64, V_Int64, MV_Int64)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+primPackedMVector(Int64, MV_Int64)
+primPackedVector(Int64, V_Int64)
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 
 newtype instance MVector s Word = MV_Word (P.MVector s Word)
@@ -267,12 +302,20 @@ newtype instance Vector    Float = V_Float  (P.Vector    Float)
 instance Unbox Float
 primMVector(Float, MV_Float)
 primVector(Float, V_Float, MV_Float)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+primPackedMVector(Float, MV_Float)
+primPackedVector(Float, V_Float)
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 newtype instance MVector s Double = MV_Double (P.MVector s Double)
 newtype instance Vector    Double = V_Double  (P.Vector    Double)
 instance Unbox Double
 primMVector(Double, MV_Double)
 primVector(Double, V_Double, MV_Double)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+primPackedMVector(Double, MV_Double)
+primPackedVector(Double, V_Double)
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 
 newtype instance MVector s Char = MV_Char (P.MVector s Char)
@@ -399,3 +442,23 @@ instance (RealFloat a, Unbox a) => G.Vector Vector (Complex a) where
 #define DEFINE_INSTANCES
 #include "unbox-tuple-instances"
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+instance (Unbox a, M.PackedMVector MVector a) => M.PackedMVector MVector (a, a) where
+  {-# INLINE basicUnsafeReadAsMulti #-}
+  {-# INLINE basicUnsafeWriteAsMulti #-}
+  basicUnsafeReadAsMulti (MV_2 _ v1 v2) j =
+      do  x <- M.basicUnsafeReadAsMulti v1 j
+          y <- M.basicUnsafeReadAsMulti v2 j
+          return $ M_2 x y
+
+  basicUnsafeWriteAsMulti (MV_2 _ v1 v2) j (M_2 x y) =
+      do  M.basicUnsafeWriteAsMulti v1 j x
+          M.basicUnsafeWriteAsMulti v2 j y
+
+instance (Unbox a, G.PackedVector Vector a) => G.PackedVector Vector (a, a) where
+  {-# INLINE basicUnsafeIndexAsMultiM #-}
+  basicUnsafeIndexAsMultiM (V_2 _ v1 v2) j =
+      do  x <- G.basicUnsafeIndexAsMultiM v1 j
+          y <- G.basicUnsafeIndexAsMultiM v2 j
+          return $! M_2 x y
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */

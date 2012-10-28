@@ -12,8 +12,16 @@
 --
 
 module Data.Vector.Generic.Mutable.Base (
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  MVector(..), PackedMVector(..)
+#else /* !defined(__GLASGOW_HASKELL_LLVM__) */
   MVector(..)
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 ) where
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import Data.Primitive.Multi
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 import Control.Monad.Primitive ( PrimMonad, PrimState )
 
@@ -133,3 +141,20 @@ class MVector v a where
     where
       n = basicLength v
 
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+-- | Class of mutable packed vectors parametrised with a primitive state
+-- token. A packed vector is one whose members are both unboxed and laid out
+-- contiguously in memory.
+--
+class (MultiType a, MVector v a) => PackedMVector v a where
+  -- | Yield the @Multi@ element at the given position. This method should not
+  -- be called directly, use 'unsafeReadAsMulti' instead. The index is given in
+  -- @a@'s.
+  basicUnsafeReadAsMulti  :: PrimMonad m => v (PrimState m) a -> Int -> m (Multi a)
+
+  -- | Replace the @Multi@ element at the given position. This method should not
+  -- be called directly, use 'unsafeWriteAsMulti' instead. The index is given in
+  -- @a@'s.
+  basicUnsafeWriteAsMulti :: PrimMonad m => v (PrimState m) a -> Int -> Multi a -> m ()
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */

@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, MultiParamTypeClasses, FlexibleInstances, Rank2Types, BangPatterns, KindSignatures, GADTs, ScopedTypeVariables #-}
+{-# LANGUAGE CPP, ExistentialQuantification, MultiParamTypeClasses, FlexibleInstances, Rank2Types, BangPatterns, KindSignatures, GADTs, ScopedTypeVariables #-}
 
 -- |
 -- Module      : Data.Vector.Fusion.Stream.Monadic
@@ -74,6 +74,7 @@ module Data.Vector.Fusion.Stream.Monadic (
 import Data.Vector.Fusion.Util ( Box(..) )
 
 import qualified Data.List as List
+
 import Data.Char      ( ord )
 import GHC.Base       ( unsafeChr )
 import Control.Monad  ( liftM )
@@ -1520,6 +1521,12 @@ fromVector v = v `seq` n `seq` Stream (Unf step 0)
            | otherwise = case basicUnsafeIndexM v i of
                            Box x -> return $ Yield x (i+1)
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+    {-# INLINE mstep #-}
+    mstep i | i >= n = return Done
+            | otherwise = case basicUnsafeIndexM v i of
+                            Box x -> return $ Yield (Left x) (i+1)
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
     
     {-# INLINE vstep #-}
     vstep True  = return (Yield (Chunk (basicLength v) (\mv -> basicUnsafeCopy mv v)) False)
@@ -1596,4 +1603,3 @@ reVector (Stream step s, sSize = n} = Stream step s n
 
   #-}
 -}
-

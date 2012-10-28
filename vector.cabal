@@ -104,6 +104,7 @@ Library
 
         Data.Vector.Fusion.Util
         Data.Vector.Fusion.Stream.Monadic
+        Data.Vector.Fusion.MultiStream.Monadic
         Data.Vector.Fusion.Bundle.Size
         Data.Vector.Fusion.Bundle.Monadic
         Data.Vector.Fusion.Bundle

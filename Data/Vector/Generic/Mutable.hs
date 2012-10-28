@@ -54,8 +54,24 @@ module Data.Vector.Generic.Mutable (
   transform, transformR,
   fill, fillR,
   unsafeAccum, accum, unsafeUpdate, update, reverse,
-  unstablePartition, unstablePartitionBundle, partitionBundle
+  unstablePartition, unstablePartitionBundle, partitionBundle,
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  -- * Class of mutable packed vector types
+  PackedMVector(..),
+
+  -- * Accessing individual multi elements
+  readAsMulti, writeAsMulti,
+  unsafeReadAsMulti, unsafeWriteAsMulti,
+                   
+  -- * Internal multi operations
+  vmultiunstream
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 ) where
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import           Data.Primitive.Multi
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 import           Data.Vector.Generic.Mutable.Base
 import qualified Data.Vector.Generic.Base as V
@@ -971,3 +987,103 @@ partitionUnknown f s
                       v2' <- unsafeAppend1 v2 i2 x
                       return (v1, i1, v2', i2+1)
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+-- Accessing individual multi elements
+-- -----------------------------------
+
+-- | Yield the @Multi@ element at the given position.
+readAsMulti :: forall m v a . (PrimMonad m, PackedMVector v a) => v (PrimState m) a -> Int -> m (Multi a)
+{-# INLINE readAsMulti #-}
+readAsMulti v i = BOUNDS_CHECK(checkIndex) "readAsMulti" i len
+                $ unsafeReadAsMulti v i
+  where
+    len = length v - multiplicity (undefined :: Multi a) + 1
+
+-- | Replace the element at the given position.
+writeAsMulti :: (PrimMonad m, PackedMVector v a) => v (PrimState m) a -> Int -> Multi a -> m ()
+{-# INLINE writeAsMulti #-}
+writeAsMulti v i x = BOUNDS_CHECK(checkIndex) "writeAsMulti" i len
+                   $ unsafeWriteAsMulti v i x
+  where
+    len = length v - multiplicity x + 1
+
+-- | Yield the @Multi@ element at the given position. No bounds checks are
+-- performed.
+unsafeReadAsMulti :: forall m v a . (PrimMonad m, PackedMVector v a) => v (PrimState m) a -> Int -> m (Multi a)
+{-# INLINE unsafeReadAsMulti #-}
+unsafeReadAsMulti v i = UNSAFE_CHECK(checkIndex) "unsafeReadAsMulti" i len
+                      $ basicUnsafeReadAsMulti v i
+  where
+    len = length v - multiplicity (undefined :: Multi a) + 1
+
+-- | Replace the element at the given position. No bounds checks are performed.
+unsafeWriteAsMulti :: (PrimMonad m, PackedMVector v a)
+                   => v (PrimState m) a -> Int -> Multi a -> m ()
+{-# INLINE unsafeWriteAsMulti #-}
+unsafeWriteAsMulti v i x = UNSAFE_CHECK(checkIndex) "unsafeWriteAsMulti" i len
+                         $ basicUnsafeWriteAsMulti v i x
+  where
+    len = length v - multiplicity x + 1
+
+vmultiunstream :: (PrimMonad m, V.PackedVector v a)
+               => Bundle v a -> m (V.Mutable v (PrimState m) a)
+{-# INLINE_FUSED vmultiunstream #-}
+vmultiunstream s = vmmultiunstream (Bundle.lift s)
+
+vmmultiunstream :: (PrimMonad m, V.PackedVector v a)
+                => MBundle m v a -> m (V.Mutable v (PrimState m) a)
+{-# INLINE_FUSED vmmultiunstream #-}
+vmmultiunstream s = case upperBound (MBundle.size s) of
+               Just n  -> vmmultiunstreamMax     s n
+               Nothing -> vmmultiunstreamUnknown s
+
+vmmultiunstreamMax :: forall m v a . (PrimMonad m, V.PackedVector v a)
+                   => MBundle m v a -> Int -> m (V.Mutable v (PrimState m) a)
+{-# INLINE vmmultiunstreamMax #-}
+vmmultiunstreamMax s n
+  = m `seq` do
+      v <- INTERNAL_CHECK(checkLength) "munstreamMax" n
+           $ unsafeNew n
+      let put i x = do
+                       INTERNAL_CHECK(checkIndex) "munstreamMax" i n
+                         $ unsafeWrite v i x
+                       return (i+1)
+
+          {-# INLINE_INNER mput #-}
+          mput i xs = do
+                       INTERNAL_CHECK(checkIndex) "munstreamMax" i n
+                         $ unsafeWriteAsMulti v i xs
+                       return (i+m)
+
+      n' <- MBundle.mfoldlM' put mput 0 s
+      return $ INTERNAL_CHECK(checkSlice) "munstreamMax" 0 n' n
+             $ unsafeSlice 0 n' v
+  where
+    m = multiplicity (undefined :: Multi a)
+
+vmmultiunstreamUnknown :: forall m v a . (PrimMonad m, V.PackedVector v a)
+                       => MBundle m v a -> m (V.Mutable v (PrimState m) a)
+{-# INLINE vmmultiunstreamUnknown #-}
+vmmultiunstreamUnknown s
+  = m `seq` do
+      v <- unsafeNew 0
+      (v', n) <- MBundle.mfoldlM put mput (v, 0) s
+      return $ INTERNAL_CHECK(checkSlice) "munstreamUnknown" 0 n (length v')
+             $ unsafeSlice 0 n v'
+  where
+    m = multiplicity (undefined :: Multi a)
+
+    {-# INLINE_INNER put #-}
+    put (v,i) x = do
+                    v' <- unsafeAppend1 v i x
+                    return (v',i+1)
+
+    {-# INLINE_INNER mput #-}
+    mput (v,i) xs = do
+                     let j = i+m
+                     v' <- if basicLength v < j
+                             then unsafeGrow v (delay_inline max (enlarge_delta v) (j - basicLength v))
+                             else return v
+                     unsafeWriteAsMulti v' i xs
+                     return (v',j)
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */

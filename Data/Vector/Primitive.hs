@@ -17,7 +17,7 @@
 
 module Data.Vector.Primitive (
   -- * Primitive vectors
-  Vector, MVector(..), Prim,
+  Vector(..), MVector(..), Prim,
 
   -- * Accessors
 

@@ -73,7 +73,25 @@ module Data.Vector.Fusion.Bundle.Monadic (
   -- * Conversions
   toList, fromList, fromListN, unsafeFromList,
   fromVector, reVector, fromVectors, concatVectors,
-  fromStream, chunks, elements
+  fromStream, chunks, elements,
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+  Multis,
+
+  -- * Multi Mapping
+  mmap, mmapM, mmapM_,
+
+  -- * Multi Zipping
+  mzipWithM_, mzipWithM, mzipWith,
+
+  -- * Multi Folding
+  mfoldl, mfoldlM, mfoldM,
+  mfoldl', mfoldlM', mfoldM',
+  mfold, mfold',
+
+  -- * Conversions
+  multis, fromPackedVector
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 ) where
 
 import Data.Vector.Generic.Base
@@ -83,6 +101,12 @@ import Data.Vector.Fusion.Util ( Box(..), delay_inline )
 import Data.Vector.Fusion.Stream.Monadic ( Stream(..), Step(..), SPEC(..) )
 import qualified Data.Vector.Fusion.Stream.Monadic as S
 import Control.Monad.Primitive
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+import Data.Primitive.Multi
+import Data.Vector.Fusion.MultiStream.Monadic ( MultiStream(..) )
+import qualified Data.Vector.Fusion.MultiStream.Monadic as MS
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 import qualified Data.List as List
 import Data.Char      ( ord )
@@ -110,17 +134,59 @@ data Chunk v a = Chunk Int (forall m. (PrimMonad m, Vector v a) => Mutable v (Pr
 
 -- | Monadic streams
 data Bundle m v a = Bundle { sElems  :: Stream m a
+#if defined(__GLASGOW_HASKELL_LLVM__)
+                           , sMultis :: Multis m a
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
                            , sChunks :: Stream m (Chunk v a)
                            , sVector :: Maybe (v a)
                            , sSize   :: Size
                            }
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+type Multis m a = Either (MultiStream m a) (Stream m (Either a (Multi a)))
+
+toMixedStream :: Monad m => Multis m a -> Stream m (Either a (Multi a))
+{-# INLINE_FUSED toMixedStream #-}
+toMixedStream (Left (MultiStream stepm step1 s)) = Stream step (Left s)
+  where
+    {-# INLINE_INNER step #-}
+    step (Left  s) = do
+                       r <- stepm s
+                       case r of
+                         Yield x s' -> return $ Yield (Right x) (Left  s')
+                         Skip    s' -> return $ Skip            (Left  s')
+                         Done       -> return $ Skip            (Right s)
+    step (Right s) = do
+                       r <- step1 s
+                       case r of
+                         Yield x s' -> return $ Yield (Left x) (Right s')
+                         Skip    s' -> return $ Skip           (Right s')
+                         Done       -> return $ Done
+
+toMixedStream (Right s) = s
+
+multisFromStream :: Monad m => Stream m a -> Multis m a
+{-# INLINE_FUSED multisFromStream #-}
+multisFromStream (Stream step s) = Right (Stream step' s)
+  where
+    {-# INLINE_INNER step' #-}
+    step' = liftM (fmap Left) . step
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
+
 fromStream :: Monad m => Stream m a -> Size -> Bundle m v a
 {-# INLINE fromStream #-}
-fromStream (Stream step s) sz = Bundle (Stream step s) (Stream step' s) Nothing sz
+fromStream (Stream step s) sz =
+#if defined(__GLASGOW_HASKELL_LLVM__)
+    Bundle (Stream step s) (Right (Stream mstep s)) (Stream step' s) Nothing sz
+#else /* !defined(__GLASGOW_HASKELL_LLVM__) */
+    Bundle (Stream step s) (Stream step' s) Nothing sz
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
   where
     step' s = do r <- step s
                  return $ fmap (\x -> Chunk 1 (\v -> M.basicUnsafeWrite v 0 x)) r
+#if defined(__GLASGOW_HASKELL_LLVM__)
+    mstep = liftM (fmap Left) . step
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 
 chunks :: Bundle m v a -> Stream m (Chunk v a)
 {-# INLINE chunks #-}
@@ -129,6 +195,12 @@ chunks = sChunks
 elements :: Bundle m v a -> Stream m a
 {-# INLINE elements #-}
 elements = sElems
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+multis :: Bundle m v a -> Multis m a
+{-# INLINE multis #-}
+multis = sMultis
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 -- | 'Size' hint of a 'Bundle'
 size :: Bundle m v a -> Size
@@ -172,6 +244,9 @@ singleton x = fromStream (S.singleton x) (Exact 1)
 replicate :: Monad m => Int -> a -> Bundle m v a
 {-# INLINE_FUSED replicate #-}
 replicate n x = Bundle (S.replicate n x)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+                       (Right (S.replicate n (Left x)))
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
                        (S.singleton $ Chunk len (\v -> M.basicSet v x))
                        Nothing
                        (Exact len)
@@ -209,7 +284,15 @@ infixr 5 ++
 -- | Concatenate two 'Bundle's
 (++) :: Monad m => Bundle m v a -> Bundle m v a -> Bundle m v a
 {-# INLINE_FUSED (++) #-}
+#if defined(__GLASGOW_HASKELL_LLVM__)
+Bundle sa ma ta _ na ++ Bundle sb mb tb _ nb = Bundle (sa S.++ sb)
+                                                      (Right (toMixedStream ma S.++ toMixedStream mb))
+                                                      (ta S.++ tb)
+                                                      Nothing
+                                                      (na + nb)
+#else /* !defined(__GLASGOW_HASKELL_LLVM__) */
 Bundle sa ta _ na ++ Bundle sb tb _ nb = Bundle (sa S.++ sb) (ta S.++ tb) Nothing (na + nb)
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 
 -- Accessing elements
 -- ------------------
@@ -293,8 +376,16 @@ mapM_ m = S.mapM_ m . sElems
 trans :: (Monad m, Monad m') => (forall a. m a -> m' a)
                              -> Bundle m v a -> Bundle m' v a
 {-# INLINE_FUSED trans #-}
+#if defined(__GLASGOW_HASKELL_LLVM__)
+trans f Bundle{sElems = s, sMultis = Left ms, sChunks = cs, sVector = v, sSize = n}
+  = Bundle { sElems = S.trans f s, sMultis = Left (MS.trans f ms), sChunks = S.trans f cs, sVector = v, sSize = n }
+
+trans f Bundle{sElems = s, sMultis = Right ms, sChunks = cs, sVector = v, sSize = n}
+  = Bundle { sElems = S.trans f s, sMultis = Right (S.trans f ms), sChunks = S.trans f cs, sVector = v, sSize = n }
+#else /* !defined(__GLASGOW_HASKELL_LLVM__) */
 trans f Bundle{sElems = s, sChunks = cs, sVector = v, sSize = n}
   = Bundle { sElems = S.trans f s, sChunks = S.trans f cs, sVector = v, sSize = n }
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 
 unbox :: Monad m => Bundle m v (Box a) -> Bundle m v a
 {-# INLINE_FUSED unbox #-}
@@ -1009,6 +1100,9 @@ unsafeFromList sz xs = fromStream (S.fromList xs) sz
 fromVector :: (Monad m, Vector v a) => v a -> Bundle m v a
 {-# INLINE_FUSED fromVector #-}
 fromVector v = v `seq` n `seq` Bundle (Stream step 0)
+#if defined(__GLASGOW_HASKELL_LLVM__)
+                                      (multisFromStream (Stream step 0))
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
                                       (Stream vstep True)
                                       (Just v)
                                       (Exact n)
@@ -1028,6 +1122,9 @@ fromVector v = v `seq` n `seq` Bundle (Stream step 0)
 fromVectors :: forall m v a. (Monad m, Vector v a) => [v a] -> Bundle m v a
 {-# INLINE_FUSED fromVectors #-}
 fromVectors vs = Bundle (Stream pstep (Left vs))
+#if defined(__GLASGOW_HASKELL_LLVM__)
+                        (multisFromStream (Stream pstep (Left vs)))
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
                         (Stream vstep vs)
                         Nothing
                         (Exact n) 
@@ -1055,6 +1152,9 @@ concatVectors :: (Monad m, Vector v a) => Bundle m u (v a) -> Bundle m v a
 {-# INLINE_FUSED concatVectors #-}
 concatVectors Bundle{sElems = Stream step s}
   = Bundle (Stream pstep (Left s))
+#if defined(__GLASGOW_HASKELL_LLVM__)
+           (multisFromStream (Stream pstep (Left s)))
+#endif /* defined(__GLASGOW_HASKELL_LLVM__) */
            (Stream vstep s)
            Nothing
            Unknown
@@ -1096,3 +1196,239 @@ reVector Bundle{sElems = s, sSize = n} = fromStream s n
 
   #-}
 
+
+#if defined(__GLASGOW_HASKELL_LLVM__)
+-- Like @fromStream@ but use the given @Multis m a@ instead of creating a
+-- degenerate form from the stream argument.
+fromStreamWithMultis :: Monad m => Stream m a -> Multis m a -> Size -> Bundle m v a
+{-# INLINE fromStreamWithMultis #-}
+fromStreamWithMultis (Stream step s) multis sz =
+    Bundle (Stream step s) multis (Stream step' s) Nothing sz
+  where
+    step' s = do r <- step s
+                 return $ fmap (\x -> Chunk 1 (\v -> M.basicUnsafeWrite v 0 x)) r
+
+-- Multi Mapping
+-- -------------
+
+mmap :: Monad m => (a -> b) -> (Multi a -> Multi b) -> Bundle m v a -> Bundle m v b
+{-# INLINE mmap #-}
+mmap p q = mmapM (return . p) (return . q)
+
+mmapM :: Monad m
+      => (a -> m b)
+      -> (Multi a -> m (Multi b))
+      -> Bundle m v a
+      -> Bundle m v b
+{-# INLINE_FUSED mmapM #-}
+mmapM p q Bundle{sElems = s, sMultis = Left ms, sSize = n} =
+    fromStreamWithMultis (S.mapM p s) (Left (MS.mmapM p q ms)) n
+
+mmapM p q Bundle{sElems = s, sMultis = Right (Stream step ms), sSize = n} =
+    fromStreamWithMultis (S.mapM p s) (Right (Stream step' ms)) n
+  where
+    {-# INLINE_INNER step' #-}
+    step' ms = do
+          r <- step ms
+          case r of
+            Yield (Left  x) ms' -> do { x' <- p x; return (Yield (Left  x') ms') }
+            Yield (Right m) ms' -> do { m' <- q m; return (Yield (Right m') ms') }
+            Skip            ms' -> return (Skip ms')
+            Done                -> return Done
+
+mmapM_ :: Monad m => (a -> m b) -> (Multi a -> m (Multi b)) -> Bundle m v a -> m ()
+{-# INLINE_FUSED mmapM_ #-}
+mmapM_ p q Bundle{sMultis = Left ms} =
+    MS.mmapM_ p q ms
+
+mmapM_ p q Bundle{sMultis = Right (Stream step s)}  =
+    S.mapM_ f (Stream step s)
+  where
+    {-# INLINE f #-}
+    f (Left a)  = liftM Left (p a)
+    f (Right b) = liftM Right (q b)
+
+-- Multi Zipping
+-- -------------
+
+mzipWithM  ::  Monad m
+           =>  (a -> b -> m c)
+           ->  (Multi a -> Multi b -> m (Multi c))
+           ->  Bundle m v a
+           ->  Bundle m v b
+           ->  Bundle m v c
+{-# INLINE_FUSED mzipWithM #-}
+mzipWithM p q Bundle{sElems = sa, sMultis = Left msa, sSize = na}
+              Bundle{sElems = sb, sMultis = Left msb, sSize = nb} =
+    fromStreamWithMultis (S.zipWithM p sa sb)
+                         (Left (MS.mzipWithM p q msa msb))
+                         (smaller na nb)
+
+mzipWithM p _ b1 b2 = zipWithM p b1 b2
+
+{-# RULES
+
+"mzipWithM xs xs [Vector.Stream]" forall f g xs.
+  mzipWithM f g xs xs = mmapM (\x -> f x x) (\x -> g x x) xs
+
+  #-}
+
+mzipWithM_ ::  Monad m
+           =>  (a -> b -> m c)
+           ->  (Multi a -> Multi b -> m (Multi c))
+           ->  Bundle m v a
+           ->  Bundle m v b
+           ->  m ()
+{-# INLINE mzipWithM_ #-}
+mzipWithM_ p q b1@(Bundle{sMultis = Left msa}) b2@(Bundle{sMultis = Left msb}) =
+    MS.mzipWithM_ p q msa msb
+
+mzipWithM_ p _ b1 b2 = zipWithM_ p b1 b2
+
+mzipWith :: Monad m
+         => (a -> b -> c)
+         -> (Multi a -> Multi b -> Multi c)
+         -> Bundle m v a
+         -> Bundle m v b
+         -> Bundle m v c
+{-# INLINE mzipWith #-}
+mzipWith p q = mzipWithM (\a b -> return (p a b)) (\a b -> return (q a b))
+
+-- Multi Folding
+-- -------------
+
+-- | Left mfold
+mfoldl :: Monad m
+       => (a -> b -> a)
+       -> (a -> Multi b -> a)
+       -> a
+       -> Bundle m v b
+       -> m a
+{-# INLINE mfoldl #-}
+mfoldl p q z =
+    mfoldlM (\a b -> return (p a b)) (\a b -> return (q a b)) z
+
+mfoldlM :: Monad m
+        => (a -> b -> m a)
+        -> (a -> Multi b -> m a)
+        -> a
+        -> Bundle m v b
+        -> m a
+{-# INLINE_FUSED mfoldlM #-}
+mfoldlM p q z b@(Bundle{sMultis = Left ms}) = MS.mfoldlM p q z ms
+mfoldlM p q z b@(Bundle{sMultis = Right s}) = S.foldlM f z s
+  where
+    {-# INLINE f #-}
+    f a (Left b)   = p a b
+    f a (Right mb) = q a mb
+
+-- | Same as 'mfoldlM'
+mfoldM :: Monad m
+       => (a -> b -> m a)
+       -> (a -> Multi b -> m a)
+       -> a
+       -> Bundle m v b
+       -> m a
+{-# INLINE mfoldM #-}
+mfoldM = mfoldlM
+
+-- | Left mfold
+mfoldl' :: Monad m
+        => (a -> b -> a)
+        -> (a -> Multi b -> a)
+        -> a
+        -> Bundle m v b
+        -> m a
+{-# INLINE mfoldl' #-}
+mfoldl' p q z =
+    mfoldlM' (\a b -> return (p a b)) (\a b -> return (q a b)) z
+
+mfoldlM' :: Monad m
+         => (a -> b -> m a)
+         -> (a -> Multi b -> m a)
+         -> a
+         -> Bundle m v b
+         -> m a
+{-# INLINE_FUSED mfoldlM' #-}
+mfoldlM' p q z b@(Bundle{sMultis = Left ms}) = MS.mfoldlM' p q z ms
+mfoldlM' p q z b@(Bundle{sMultis = Right s}) = S.foldlM' f z s
+  where
+    {-# INLINE f #-}
+    f a (Left b)   = p a b
+    f a (Right mb) = q a mb
+
+-- | Same as 'mfoldlM''
+mfoldM' :: Monad m
+        => (a -> b -> m a)
+        -> (a -> Multi b -> m a)
+        -> a
+        -> Bundle m v b
+        -> m a
+{-# INLINE mfoldM' #-}
+mfoldM' = mfoldlM'
+
+mfold :: (Monad m, MultiType a)
+      => (a -> a -> a)
+      -> (Multi a -> Multi a -> Multi a)
+      -> a
+      -> Bundle m v a
+      -> m a
+{-# INLINE_FUSED mfold #-}
+mfold p q z b@(Bundle{sMultis = Left ms}) = MS.mfoldlu p q z ms
+mfold p q z b@(Bundle{sMultis = Right s}) =
+    do (a, ma) <- S.foldlM f (z, multireplicate z) s
+       return (multifold p a ma)
+  where
+    {-# INLINE f #-}
+    f (a, ma) (Left  b)  = return (p a b, ma)
+    f (a, ma) (Right mb) = return (a, q ma mb)
+
+data Pair a b = Pair !a !b
+
+mfold' :: (Monad m, MultiType a)
+       => (a -> a -> a)
+       -> (Multi a -> Multi a -> Multi a)
+       -> a
+       -> Bundle m v a
+       -> m a
+{-# INLINE_FUSED mfold' #-}
+mfold' p q z b@(Bundle{sMultis = Left ms}) = MS.mfoldlu' p q z ms
+mfold' p q z b@(Bundle{sMultis = Right s}) =
+    do Pair a ma <- S.foldlM' f (Pair z (multireplicate z)) s
+       return (multifold p a ma)
+  where
+    {-# INLINE f #-}
+    f (Pair a ma) (Left  b)  = return (Pair (p a b) ma)
+    f (Pair a ma) (Right mb) = return (Pair a (q ma mb))
+
+fromPackedVector :: forall m v a . (Monad m, PackedVector v a) => v a -> Bundle m v a
+{-# INLINE_FUSED fromPackedVector #-}
+fromPackedVector v = v `seq` n `seq` Bundle (Stream step 0)
+                                            (Left (MultiStream stepm step1 0))
+                                            (Stream vstep True)
+                                            (Just v)
+                                            (Exact n)
+  where
+    n = basicLength v
+    k = n - n `rem` m
+    m = multiplicity (undefined :: Multi a)
+
+    {-# INLINE step #-}
+    step i | i >= n = return Done
+           | otherwise = case basicUnsafeIndexM v i of
+                           Box x -> return $ Yield x (i+1)
+
+    {-# INLINE stepm #-}
+    stepm i | i >= k    = return Done
+            | otherwise = case basicUnsafeIndexAsMultiM v i of
+                            Box x -> return $ Yield x (i+m)
+
+    {-# INLINE step1 #-}
+    step1 i | i >= n    = return Done
+            | otherwise = case basicUnsafeIndexM v i of
+                            Box x -> return $ Yield x (i+1)
+    
+    {-# INLINE vstep #-}
+    vstep True  = return (Yield (Chunk (basicLength v) (\mv -> basicUnsafeCopy mv v)) False)
+    vstep False = return Done
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
