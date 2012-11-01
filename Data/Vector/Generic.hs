@@ -2160,6 +2160,13 @@ mzipWithM_ :: (Monad m, PackedVector v a, PackedVector v b, PackedVector v c)
 {-# INLINE mzipWithM_ #-}
 mzipWithM_ p q as bs = Bundle.mzipWithM_ p q (multistream as) (multistream bs)
 
+{-# RULES
+
+"mzipWithM/multistream [Vector]" [2] forall p q v1 v2 .
+  MBundle.mzipWithM p q (multistream v1) (multistream v2) = MBundle.mzipWithHackM p q v1 v2
+
+  #-}
+
 mfoldl :: PackedVector v b => (a -> b -> a) -> (a -> Multi b -> a) -> a -> v b -> a
 {-# INLINE mfoldl #-}
 mfoldl p q z = Bundle.mfoldl p q z . multistream

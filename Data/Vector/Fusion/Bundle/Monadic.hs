@@ -83,6 +83,7 @@ module Data.Vector.Fusion.Bundle.Monadic (
 
   -- * Multi Zipping
   mzipWithM_, mzipWithM, mzipWith,
+  mzipWithHackM, mzipWithHack,
 
   -- * Multi Folding
   mfoldl, mfoldlM, mfoldM,
@@ -1293,6 +1294,50 @@ mzipWith :: Monad m
          -> Bundle m v c
 {-# INLINE mzipWith #-}
 mzipWith p q = mzipWithM (\a b -> return (p a b)) (\a b -> return (q a b))
+
+mzipWithHackM  ::  forall m v a b . (PackedVector v a, Monad m)
+               =>  (a -> a -> m b)
+               ->  (Multi a -> Multi a -> m (Multi b))
+               ->  v a
+               ->  v a
+               ->  Bundle m v b
+{-# INLINE_FUSED mzipWithHackM #-}
+mzipWithHackM p q v1 v2 =
+    v1 `seq` v2 `seq` n `seq`
+      Bundle (Stream step 0)
+             (Left (MultiStream stepm step 0))
+             (Stream vstep 0)
+             Nothing
+             (Exact n)
+  where
+    n = min (basicLength v1) (basicLength v2)
+    k = n - n `rem` m
+    m = multiplicity (undefined :: Multi a)
+
+    {-# INLINE step #-}
+    step i | i >= n    = return Done
+           | otherwise = case basicUnsafeIndexM v1 i of
+                           Box x -> case basicUnsafeIndexM v2 i of
+                                      Box y -> liftM (`Yield` (i+1)) (p x y)
+
+    {-# INLINE stepm #-}
+    stepm i | i >= k    = return Done
+            | otherwise = case basicUnsafeIndexAsMultiM v1 i of
+                            Box x -> case basicUnsafeIndexAsMultiM v2 i of
+                                       Box y -> liftM (`Yield` (i+m)) (q x y)
+    
+    {-# INLINE vstep #-}
+    vstep i = do r <- step i
+                 return $ fmap (\x -> Chunk 1 (\v -> M.basicUnsafeWrite v 0 x)) r
+
+mzipWithHack :: (PackedVector v a, Monad m)
+             => (a -> a -> b)
+             -> (Multi a -> Multi a -> Multi b)
+             -> v a
+             -> v a
+             -> Bundle m v b
+{-# INLINE mzipWithHack #-}
+mzipWithHack p q = mzipWithHackM (\a b -> return (p a b)) (\a b -> return (q a b))
 
 -- Multi Folding
 -- -------------
