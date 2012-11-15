@@ -150,4 +150,6 @@ class (MultiType a, Vector v a, M.PackedMVector (Mutable v) a) => PackedVector v
   -- | Yield the element at the given position in a monad. No range checks are
   -- performed. The index is given in @a@'s, but the result is a @Multi a@.
   basicUnsafeIndexAsMultiM  :: Monad m => v a -> Int -> m (Multi a)
+
+  basicUnsafePrefetchDataM  :: Monad m => v a -> Int -> Int -> m (v a)
 #endif /* defined(__GLASGOW_HASKELL_LLVM__) */

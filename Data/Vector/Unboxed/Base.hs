@@ -34,6 +34,7 @@ import Control.Monad ( liftM )
 
 #if defined(__GLASGOW_HASKELL_LLVM__)
 import Data.Primitive.Multi
+import Foreign ( sizeOf )
 #endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 import Data.Word ( Word, Word8, Word16, Word32, Word64 )
@@ -219,7 +220,11 @@ instance M.PackedMVector MVector ty where {                             \
 instance G.PackedVector Vector ty where {                               \
   {-# INLINE basicUnsafeIndexAsMultiM #-}                               \
 ; basicUnsafeIndexAsMultiM (con (P.Vector i _ arr)) j =                 \
-      return $! indexByteArrayAsMulti arr (i+j) }
+      return $! indexByteArrayAsMulti arr (i+j)                         \
+; {-# INLINE basicUnsafePrefetchDataM #-}                               \
+; basicUnsafePrefetchDataM (con (P.Vector i n arr)) j k =               \
+      do { arr' <- return $! prefetchByteArrayData arr ((i+j)*sizeOf (undefined::ty)+k)  \
+         ; return (con (P.Vector i n arr')) }}
 
 newtype instance MVector s Int = MV_Int (P.MVector s Int)
 newtype instance Vector    Int = V_Int  (P.Vector    Int)
@@ -461,4 +466,9 @@ instance (Unbox a, G.PackedVector Vector a) => G.PackedVector Vector (a, a) wher
       do  x <- G.basicUnsafeIndexAsMultiM v1 j
           y <- G.basicUnsafeIndexAsMultiM v2 j
           return $! M_2 x y
+
+  basicUnsafePrefetchDataM (V_2 n v1 v2) j k =
+      do  v1' <- G.basicUnsafePrefetchDataM v1 j k
+          v2' <- G.basicUnsafePrefetchDataM v2 j k
+          return $! V_2 n v1' v2'
 #endif /* defined(__GLASGOW_HASKELL_LLVM__) */

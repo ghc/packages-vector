@@ -265,6 +265,10 @@ instance (Storable a, MultiPrim a, Storable (Multi a))
     = return $! unsafeInlineIO
     $ withForeignPtr fp $ \p ->
       peekElemOffAsMulti p i
+  {-# INLINE basicUnsafePrefetchDataM #-}               
+  basicUnsafePrefetchDataM (Vector n fp) j k
+    = case prefetchForeignPtrData fp (j * sizeOf (undefined::a)+k) of
+        fp' -> return $ Vector n fp'
 #endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
 -- See http://trac.haskell.org/vector/ticket/12

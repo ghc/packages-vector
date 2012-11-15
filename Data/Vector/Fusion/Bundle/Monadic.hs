@@ -113,6 +113,7 @@ import qualified Data.List as List
 import Data.Char      ( ord )
 import GHC.Base       ( unsafeChr )
 import Control.Monad  ( liftM )
+import Foreign        ( sizeOf )
 import Prelude hiding ( length, null,
                         replicate, (++),
                         head, last, (!!),
@@ -144,6 +145,9 @@ data Bundle m v a = Bundle { sElems  :: Stream m a
                            }
 
 #if defined(__GLASGOW_HASKELL_LLVM__)
+mAGIC_PREFETCH_CONSTANT :: Int
+mAGIC_PREFETCH_CONSTANT = 128*12
+
 type Multis m a = Either (MultiStream m a) (Stream m (Either a (Multi a)))
 
 toMixedStream :: Monad m => Multis m a -> Stream m (Either a (Multi a))
@@ -1322,9 +1326,11 @@ mzipWithHackM p q v1 v2 =
 
     {-# INLINE stepm #-}
     stepm i | i >= k    = return Done
-            | otherwise = case basicUnsafeIndexAsMultiM v1 i of
-                            Box x -> case basicUnsafeIndexAsMultiM v2 i of
-                                       Box y -> liftM (`Yield` (i+m)) (q x y)
+            | otherwise =              case basicUnsafePrefetchDataM v1  i mAGIC_PREFETCH_CONSTANT of
+                          { Box v1' -> case basicUnsafePrefetchDataM v2  i mAGIC_PREFETCH_CONSTANT of
+                          { Box v2' -> case basicUnsafeIndexAsMultiM v1' i of
+                          { Box x   -> case basicUnsafeIndexAsMultiM v2' i of
+                          { Box y   -> liftM (`Yield` (i+m)) (q x y) }}}}
     
     {-# INLINE vstep #-}
     vstep i = do r <- step i
@@ -1465,8 +1471,9 @@ fromPackedVector v = v `seq` n `seq` Bundle (Stream step 0)
 
     {-# INLINE stepm #-}
     stepm i | i >= k    = return Done
-            | otherwise = case basicUnsafeIndexAsMultiM v i of
-                            Box x -> return $ Yield x (i+m)
+            | otherwise =             case basicUnsafePrefetchDataM v  i mAGIC_PREFETCH_CONSTANT of
+                          { Box v' -> case basicUnsafeIndexAsMultiM v' i of
+                          { Box x  -> return $ Yield x (i+m) }}
 
     {-# INLINE step1 #-}
     step1 i | i >= n    = return Done
