@@ -105,7 +105,7 @@ import Control.Monad.Primitive
 
 #if defined(__GLASGOW_HASKELL_LLVM__)
 import Data.Primitive.Multi
-import Data.Vector.Fusion.MultiStream.Monadic ( MultiStream(..) )
+import Data.Vector.Fusion.MultiStream.Monadic ( Leap(..), MultiStream(..) )
 import qualified Data.Vector.Fusion.MultiStream.Monadic as MS
 #endif /* defined(__GLASGOW_HASKELL_LLVM__) */
 
@@ -152,7 +152,7 @@ type Multis m a = Either (MultiStream m a) (Stream m (Either a (Multi a)))
 
 toMixedStream :: Monad m => Multis m a -> Stream m (Either a (Multi a))
 {-# INLINE_FUSED toMixedStream #-}
-toMixedStream (Left (MultiStream stepm step1 s)) = Stream step (Left s)
+toMixedStream (Left (MultiStream _ stepm step1 s)) = Stream step (Left s)
   where
     {-# INLINE_INNER step #-}
     step (Left  s) = do
@@ -1309,7 +1309,7 @@ mzipWithHackM  ::  forall m v a b . (PackedVector v a, Monad m)
 mzipWithHackM p q v1 v2 =
     v1 `seq` v2 `seq` n `seq`
       Bundle (Stream step 0)
-             (Left (MultiStream stepm step 0))
+             (Left (MultiStream leap stepm step 0))
              (Stream vstep 0)
              Nothing
              (Exact n)
@@ -1320,17 +1320,53 @@ mzipWithHackM p q v1 v2 =
 
     {-# INLINE step #-}
     step i | i >= n    = return Done
-           | otherwise = case basicUnsafeIndexM v1 i of
-                           Box x -> case basicUnsafeIndexM v2 i of
-                                      Box y -> liftM (`Yield` (i+1)) (p x y)
+           | otherwise = let Box !x = basicUnsafeIndexM v1 i
+                             Box !y = basicUnsafeIndexM v2 i
+                         in
+                           liftM (`Yield` (i+1)) (p x y)
+
+
+    {-# INLINE leap #-}
+    leap i | i+4*m > n           = return Done
+           | n < pREFETCH_THRESH = let Box !x1  = basicUnsafeIndexAsMultiM v1 i
+                                       Box !x2  = basicUnsafeIndexAsMultiM v1 (i+m)
+                                       Box !x3  = basicUnsafeIndexAsMultiM v1 (i+2*m)
+                                       Box !x4  = basicUnsafeIndexAsMultiM v1 (i+3*m)
+                                       Box !y1  = basicUnsafeIndexAsMultiM v2 i
+                                       Box !y2  = basicUnsafeIndexAsMultiM v2 (i+m)
+                                       Box !y3  = basicUnsafeIndexAsMultiM v2 (i+2*m)
+                                       Box !y4  = basicUnsafeIndexAsMultiM v2 (i+3*m)
+                                   in
+                                     do { z1 <- q x1 y1
+                                        ; z2 <- q x2 y2
+                                        ; z3 <- q x3 y3
+                                        ; z4 <- q x4 y4
+                                        ; return $ Yield (Leap z1 z2 z3 z4) (i+4*m)
+                                        }
+           | otherwise           = let Box !v1' = basicUnsafePrefetchDataM v1  i mAGIC_PREFETCH_CONSTANT
+                                       Box !v2' = basicUnsafePrefetchDataM v2  i mAGIC_PREFETCH_CONSTANT
+                                       Box !x1  = basicUnsafeIndexAsMultiM v1' i
+                                       Box !x2  = basicUnsafeIndexAsMultiM v1' (i+m)
+                                       Box !x3  = basicUnsafeIndexAsMultiM v1' (i+2*m)
+                                       Box !x4  = basicUnsafeIndexAsMultiM v1' (i+3*m)
+                                       Box !y1  = basicUnsafeIndexAsMultiM v2' i
+                                       Box !y2  = basicUnsafeIndexAsMultiM v2' (i+m)
+                                       Box !y3  = basicUnsafeIndexAsMultiM v2' (i+2*m)
+                                       Box !y4  = basicUnsafeIndexAsMultiM v2' (i+3*m)
+                                   in
+                                     do { z1 <- q x1 y1
+                                        ; z2 <- q x2 y2
+                                        ; z3 <- q x3 y3
+                                        ; z4 <- q x4 y4
+                                        ; return $ Yield (Leap z1 z2 z3 z4) (i+4*m)
+                                        }
 
     {-# INLINE stepm #-}
     stepm i | i >= k    = return Done
-            | otherwise =              case basicUnsafePrefetchDataM v1  i mAGIC_PREFETCH_CONSTANT of
-                          { Box v1' -> case basicUnsafePrefetchDataM v2  i mAGIC_PREFETCH_CONSTANT of
-                          { Box v2' -> case basicUnsafeIndexAsMultiM v1' i of
-                          { Box x   -> case basicUnsafeIndexAsMultiM v2' i of
-                          { Box y   -> liftM (`Yield` (i+m)) (q x y) }}}}
+            | otherwise = let Box !x   = basicUnsafeIndexAsMultiM v1 i
+                              Box !y   = basicUnsafeIndexAsMultiM v2 i
+                          in
+                            liftM (`Yield` (i+m)) (q x y)
     
     {-# INLINE vstep #-}
     vstep i = do r <- step i
@@ -1452,10 +1488,14 @@ mfold' p q z b@(Bundle{sMultis = Right s}) =
     f (Pair a ma) (Left  b)  = return (Pair (p a b) ma)
     f (Pair a ma) (Right mb) = return (Pair a (q ma mb))
 
+-- Don't prefetch below this size. Chosen rather arbitrarily...
+pREFETCH_THRESH :: Int
+pREFETCH_THRESH = 8192
+
 fromPackedVector :: forall m v a . (Monad m, PackedVector v a) => v a -> Bundle m v a
 {-# INLINE_FUSED fromPackedVector #-}
 fromPackedVector v = v `seq` n `seq` Bundle (Stream step 0)
-                                            (Left (MultiStream stepm step1 0))
+                                            (Left (MultiStream leap stepm step 0))
                                             (Stream vstep True)
                                             (Just v)
                                             (Exact n)
@@ -1466,19 +1506,31 @@ fromPackedVector v = v `seq` n `seq` Bundle (Stream step 0)
 
     {-# INLINE step #-}
     step i | i >= n = return Done
-           | otherwise = case basicUnsafeIndexM v i of
-                           Box x -> return $ Yield x (i+1)
+           | otherwise = let Box !x = basicUnsafeIndexM v i
+                         in
+                           return $ Yield x (i+1)
 
+    {-# INLINE leap #-}
+    leap i | i+4*m > n           = return Done
+           | n < pREFETCH_THRESH = let Box !x1  = basicUnsafeIndexAsMultiM v i
+                                       Box !x2  = basicUnsafeIndexAsMultiM v (i+m)
+                                       Box !x3  = basicUnsafeIndexAsMultiM v (i+2*m)
+                                       Box !x4  = basicUnsafeIndexAsMultiM v (i+3*m)
+                                   in
+                                     return $ Yield (Leap x1 x2 x3 x4) (i+4*m)
+           | otherwise           = let Box !v'  = basicUnsafePrefetchDataM v  i mAGIC_PREFETCH_CONSTANT
+                                       Box !x1  = basicUnsafeIndexAsMultiM v' i
+                                       Box !x2  = basicUnsafeIndexAsMultiM v' (i+m)
+                                       Box !x3  = basicUnsafeIndexAsMultiM v' (i+2*m)
+                                       Box !x4  = basicUnsafeIndexAsMultiM v' (i+3*m)
+                                   in
+                                     return $ Yield (Leap x1 x2 x3 x4) (i+4*m)
+                                                 
     {-# INLINE stepm #-}
     stepm i | i >= k    = return Done
-            | otherwise =             case basicUnsafePrefetchDataM v  i mAGIC_PREFETCH_CONSTANT of
-                          { Box v' -> case basicUnsafeIndexAsMultiM v' i of
-                          { Box x  -> return $ Yield x (i+m) }}
-
-    {-# INLINE step1 #-}
-    step1 i | i >= n    = return Done
-            | otherwise = case basicUnsafeIndexM v i of
-                            Box x -> return $ Yield x (i+1)
+            | otherwise = let Box !x  = basicUnsafeIndexAsMultiM v i
+                          in
+                            return $ Yield x (i+m)
     
     {-# INLINE vstep #-}
     vstep True  = return (Yield (Chunk (basicLength v) (\mv -> basicUnsafeCopy mv v)) False)

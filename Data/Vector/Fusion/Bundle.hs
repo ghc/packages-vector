@@ -153,9 +153,9 @@ inplace f g b = b `seq` M.fromStream (f (M.elements b)) (g (M.size b))
 lift :: Monad m => Bundle v a -> M.Bundle m v a
 {-# INLINE_FUSED lift #-}
 #if defined(__GLASGOW_HASKELL_LLVM__)
-lift (M.Bundle (Stream step s) (Left (MultiStream stepm step1 ms)) (Stream vstep t) v sz)
+lift (M.Bundle (Stream step s) (Left (MultiStream leap stepm step1 ms)) (Stream vstep t) v sz)
     = M.Bundle (Stream (return . unId . step) s)
-               (Left (MultiStream (return . unId . stepm) (return . unId . step1) ms))
+               (Left (MultiStream (return . unId . leap) (return . unId . stepm) (return . unId . step1) ms))
                (Stream (return . unId . vstep) t) v sz
 
 lift (M.Bundle (Stream step s) (Right (Stream mstep ms)) (Stream vstep t) v sz)
