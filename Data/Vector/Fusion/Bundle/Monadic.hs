@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, MultiParamTypeClasses, FlexibleInstances, Rank2Types, BangPatterns, KindSignatures, GADTs, ScopedTypeVariables #-}
+{-# LANGUAGE ExistentialQuantification, MultiParamTypeClasses, FlexibleContexts, FlexibleInstances, Rank2Types, BangPatterns, KindSignatures, GADTs, ScopedTypeVariables #-}
 
 -- |
 -- Module      : Data.Vector.Fusion.Bundle.Monadic
@@ -895,6 +895,38 @@ enumFromTo_small x y = x `seq` y `seq` fromStream (Stream step x) (Exact n)
 -- unsigned types). See http://hackage.haskell.org/trac/ghc/ticket/3744
 --
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+enumFromTo_int :: forall m v. Monad m => Int -> Int -> Bundle m v Int
+{-# INLINE_FUSED enumFromTo_int #-}
+enumFromTo_int x y = x `seq` y `seq`
+    Bundle (Stream step x) (Left (MultiStream leap mstep step x)) (Stream vstep x) Nothing (Exact (len x y))
+  where
+    mul = multiplicity (undefined :: Multi Int)
+
+    {-# INLINE [0] len #-}
+    len :: Int -> Int -> Int
+    len x y | x > y     = 0
+            | otherwise = BOUNDS_CHECK(check) "enumFromTo" "vector too large"
+                          (n > 0)
+                        $ n
+      where
+        n = y-x+1
+
+    {-# INLINE_INNER step #-}
+    step x | x <= y    = return $ Yield x (x+1)
+           | otherwise = return $ Done
+
+    {-# INLINE_INNER vstep #-}
+    vstep s = do r <- step s
+                 return $ fmap (\x -> Chunk 1 (\v -> M.basicUnsafeWrite v 0 x)) r
+
+    {-# INLINE_INNER leap #-}
+    leap _ = return Done
+
+    {-# INLINE_INNER mstep #-}
+    mstep x | x <= y + mul - 1 = return $ Yield (multireplicate x + multienum) (x+mul)
+            | otherwise        = return $ Done
+#else /* !defined(__GLASGOW_HASKELL_LLVM__) */
 enumFromTo_int :: forall m v. Monad m => Int -> Int -> Bundle m v Int
 {-# INLINE_FUSED enumFromTo_int #-}
 enumFromTo_int x y = x `seq` y `seq` fromStream (Stream step x) (Exact (len x y))
@@ -911,6 +943,7 @@ enumFromTo_int x y = x `seq` y `seq` fromStream (Stream step x) (Exact (len x y)
     {-# INLINE_INNER step #-}
     step x | x <= y    = return $ Yield x (x+1)
            | otherwise = return $ Done
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 
 enumFromTo_intlike :: (Integral a, Monad m) => a -> a -> Bundle m v a
 {-# INLINE_FUSED enumFromTo_intlike #-}
@@ -1039,6 +1072,40 @@ enumFromTo_char x y = x `seq` y `seq` fromStream (Stream step xn) (Exact n)
 -- Specialise enumFromTo for Float and Double.
 -- Also, try to do something about pairs?
 
+#if defined(__GLASGOW_HASKELL_LLVM__)
+enumFromTo_double :: forall m v a . (Monad m, Ord a, RealFrac a, MultiPrim a, Num (Multi a))
+                  => a -> a -> Bundle m v a
+{-# INLINE_FUSED enumFromTo_double #-}
+enumFromTo_double n m = n `seq` m `seq`
+    Bundle (Stream step n) (Left (MultiStream leap mstep step n)) (Stream vstep n) Nothing (Max (len n m))
+  where
+    lim       = m + 1/2 -- important to float out
+    multi_lim = lim + fromIntegral mul - 1
+    mul       = multiplicity (undefined :: Multi a)
+
+    {-# INLINE [0] len #-}
+    len x y | x > y     = 0
+            | otherwise = BOUNDS_CHECK(check) "enumFromTo" "vector too large"
+                          (n > 0)
+                        $ fromIntegral n
+      where
+        n = truncate (y-x)+2
+
+    {-# INLINE_INNER step #-}
+    step x | x <= lim  = return $ Yield x (x+1)
+           | otherwise = return $ Done
+
+    {-# INLINE_INNER vstep #-}
+    vstep s = do r <- step s
+                 return $ fmap (\x -> Chunk 1 (\v -> M.basicUnsafeWrite v 0 x)) r
+
+    {-# INLINE_INNER leap #-}
+    leap _ = return Done
+
+    {-# INLINE_INNER mstep #-}
+    mstep x | x <= multi_lim  = return $ Yield (multireplicate x + multienum) (x+fromIntegral mul)
+            | otherwise       = return $ Done
+#else /* !defined(__GLASGOW_HASKELL_LLVM__) */
 enumFromTo_double :: (Monad m, Ord a, RealFrac a) => a -> a -> Bundle m v a
 {-# INLINE_FUSED enumFromTo_double #-}
 enumFromTo_double n m = n `seq` m `seq` fromStream (Stream step n) (Max (len n m))
@@ -1056,6 +1123,7 @@ enumFromTo_double n m = n `seq` m `seq` fromStream (Stream step n) (Max (len n m
     {-# INLINE_INNER step #-}
     step x | x <= lim  = return $ Yield x (x+1)
            | otherwise = return $ Done
+#endif /* !defined(__GLASGOW_HASKELL_LLVM__) */
 
 {-# RULES
 
