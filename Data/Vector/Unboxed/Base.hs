@@ -471,4 +471,32 @@ instance (Unbox a, G.PackedVector Vector a) => G.PackedVector Vector (a, a) wher
       do  v1' <- G.basicUnsafePrefetchDataM v1 j k
           v2' <- G.basicUnsafePrefetchDataM v2 j k
           return $! V_2 n v1' v2'
+
+instance (Unbox a, M.PackedMVector MVector a) => M.PackedMVector MVector (a, a, a) where
+  {-# INLINE basicUnsafeReadAsMulti #-}
+  {-# INLINE basicUnsafeWriteAsMulti #-}
+  basicUnsafeReadAsMulti (MV_3 _ v1 v2 v3) j =
+      do  x <- M.basicUnsafeReadAsMulti v1 j
+          y <- M.basicUnsafeReadAsMulti v2 j
+          z <- M.basicUnsafeReadAsMulti v3 j
+          return $ M_3 x y z
+
+  basicUnsafeWriteAsMulti (MV_3 _ v1 v2 v3) j (M_3 x y z) =
+      do  M.basicUnsafeWriteAsMulti v1 j x
+          M.basicUnsafeWriteAsMulti v2 j y
+          M.basicUnsafeWriteAsMulti v3 j z
+
+instance (Unbox a, G.PackedVector Vector a) => G.PackedVector Vector (a, a, a) where
+  {-# INLINE basicUnsafeIndexAsMultiM #-}
+  basicUnsafeIndexAsMultiM (V_3 _ v1 v2 v3) j =
+      do  x <- G.basicUnsafeIndexAsMultiM v1 j
+          y <- G.basicUnsafeIndexAsMultiM v2 j
+          z <- G.basicUnsafeIndexAsMultiM v3 j
+          return $! M_3 x y z
+
+  basicUnsafePrefetchDataM (V_3 n v1 v2 v3) j k =
+      do  v1' <- G.basicUnsafePrefetchDataM v1 j k
+          v2' <- G.basicUnsafePrefetchDataM v2 j k
+          v3' <- G.basicUnsafePrefetchDataM v3 j k
+          return $! V_3 n v1' v2' v3'
 #endif /* defined(__GLASGOW_HASKELL_LLVM__) */
