@@ -1396,23 +1396,12 @@ mzipWithHackM p q v1 v2 =
 
     {-# INLINE leap #-}
     leap i | i+4*m > n           = return Done
-           | n < pREFETCH_THRESH = let Box !x1  = basicUnsafeIndexAsMultiM v1 i
-                                       Box !x2  = basicUnsafeIndexAsMultiM v1 (i+m)
-                                       Box !x3  = basicUnsafeIndexAsMultiM v1 (i+2*m)
-                                       Box !x4  = basicUnsafeIndexAsMultiM v1 (i+3*m)
-                                       Box !y1  = basicUnsafeIndexAsMultiM v2 i
-                                       Box !y2  = basicUnsafeIndexAsMultiM v2 (i+m)
-                                       Box !y3  = basicUnsafeIndexAsMultiM v2 (i+2*m)
-                                       Box !y4  = basicUnsafeIndexAsMultiM v2 (i+3*m)
-                                   in
-                                     do { z1 <- q x1 y1
-                                        ; z2 <- q x2 y2
-                                        ; z3 <- q x3 y3
-                                        ; z4 <- q x4 y4
-                                        ; return $ Yield (Leap z1 z2 z3 z4) (i+4*m)
-                                        }
-           | otherwise           = let Box !v1' = basicUnsafePrefetchDataM v1  i mAGIC_PREFETCH_CONSTANT
-                                       Box !v2' = basicUnsafePrefetchDataM v2  i mAGIC_PREFETCH_CONSTANT
+           | otherwise           = let Box !v1' = if n < pREFETCH_THRESH
+                                                  then Box v1
+                                                  else basicUnsafePrefetchDataM v1 i mAGIC_PREFETCH_CONSTANT
+                                       Box !v2' = if n < pREFETCH_THRESH
+                                                  then Box v2
+                                                  else basicUnsafePrefetchDataM v2 i mAGIC_PREFETCH_CONSTANT
                                        Box !x1  = basicUnsafeIndexAsMultiM v1' i
                                        Box !x2  = basicUnsafeIndexAsMultiM v1' (i+m)
                                        Box !x3  = basicUnsafeIndexAsMultiM v1' (i+2*m)
@@ -1580,13 +1569,9 @@ fromPackedVector v = v `seq` n `seq` Bundle (Stream step 0)
 
     {-# INLINE leap #-}
     leap i | i+4*m > n           = return Done
-           | n < pREFETCH_THRESH = let Box !x1  = basicUnsafeIndexAsMultiM v i
-                                       Box !x2  = basicUnsafeIndexAsMultiM v (i+m)
-                                       Box !x3  = basicUnsafeIndexAsMultiM v (i+2*m)
-                                       Box !x4  = basicUnsafeIndexAsMultiM v (i+3*m)
-                                   in
-                                     return $ Yield (Leap x1 x2 x3 x4) (i+4*m)
-           | otherwise           = let Box !v'  = basicUnsafePrefetchDataM v  i mAGIC_PREFETCH_CONSTANT
+           | otherwise           = let Box !v'  = if n < pREFETCH_THRESH
+                                                  then Box v
+                                                  else basicUnsafePrefetchDataM v i mAGIC_PREFETCH_CONSTANT
                                        Box !x1  = basicUnsafeIndexAsMultiM v' i
                                        Box !x2  = basicUnsafeIndexAsMultiM v' (i+m)
                                        Box !x3  = basicUnsafeIndexAsMultiM v' (i+2*m)
