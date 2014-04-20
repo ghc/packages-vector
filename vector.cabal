@@ -46,12 +46,12 @@ Description:
 	* Safe Haskell support removed
 	.
 
-Cabal-Version:  >= 1.6
+Cabal-Version:  >= 1.10
 Build-Type:     Simple
 
 Extra-Source-Files:
       README.md
-      tests/vector-tests.cabal
+
       tests/LICENSE
       tests/Setup.hs
       tests/Main.hs
@@ -94,7 +94,9 @@ Flag InternalChecks
 
 
 Library
-  Extensions: CPP, DeriveDataTypeable
+  Default-Extensions: CPP, DeriveDataTypeable
+  Default-Language: Haskell2010
+
   Exposed-Modules:
         Data.Vector.Internal.Check
 
@@ -150,3 +152,51 @@ Library
 source-repository head
   type:     git
   location: https://github.com/haskell/vector
+
+
+test-suite vector-tests-O0
+  Default-Language: Haskell2010
+  type: exitcode-stdio-1.0
+  Main-Is:  Main.hs
+  hs-source-dirs: tests
+  Build-Depends: base >= 4 && < 5, template-haskell, vector,
+                 random,
+                 QuickCheck >=  2.7  && < 2.8 , test-framework, test-framework-quickcheck2,
+                 transformers >= 0.2.0.0
+
+  default-extensions: CPP,
+              ScopedTypeVariables,
+              PatternGuards,
+              MultiParamTypeClasses,
+              FlexibleContexts,
+              Rank2Types,
+              TypeSynonymInstances,
+              TypeFamilies,
+              TemplateHaskell
+
+  Ghc-Options: -O0
+  Ghc-Options: -Wall -fno-warn-orphans -fno-warn-missing-signatures
+
+test-suite vector-tests-O2
+  Default-Language: Haskell2010
+  type: exitcode-stdio-1.0
+  Main-Is:  Main.hs
+  hs-source-dirs: tests
+  Build-Depends: base >= 4 && < 5, template-haskell, vector,
+                 random,
+                 QuickCheck  >= 2.7, test-framework, test-framework-quickcheck2,
+                 transformers >= 0.2.0.0
+
+  default-extensions: CPP,
+              ScopedTypeVariables,
+              PatternGuards,
+              MultiParamTypeClasses,
+              FlexibleContexts,
+              Rank2Types,
+              TypeSynonymInstances,
+              TypeFamilies,
+              TemplateHaskell
+
+  Ghc-Options: -O2
+  Ghc-Options: -Wall -fno-warn-orphans -fno-warn-missing-signatures
+
