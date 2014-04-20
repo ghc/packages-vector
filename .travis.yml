@@ -23,7 +23,7 @@ before_install:
 
 install:
  - cabal-1.18 update
- - cabal-1.18 install --only-dependencies
+ - cabal-1.18 install --only-dependencies --enable-test
  - ghc --version
 
 script:
