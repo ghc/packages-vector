@@ -1,7 +1,7 @@
 module Tests.Vector (tests) where
 
 import Boilerplater
-import Utilities
+import Utilities as Util 
 
 import qualified Data.Vector.Generic as V
 import qualified Data.Vector
@@ -213,7 +213,7 @@ testPolymorphicFunctions _ = $(testProperties [
     prop_concat    :: P ([v a] -> v a) = V.concat `eq` concat
     prop_force     :: P (v a -> v a)        = V.force `eq` id
     prop_generate  :: P (Int -> (Int -> a) -> v a)
-              = (\n _ -> n < 1000) ===> V.generate `eq` generate
+              = (\n _ -> n < 1000) ===> V.generate `eq` Util.generate
     prop_iterateN  :: P (Int -> (a -> a) -> a -> v a)
               = (\n _ _ -> n < 1000) ===> V.iterateN `eq` (\n f -> take n . iterate f)
 

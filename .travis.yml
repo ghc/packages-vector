@@ -29,6 +29,7 @@ install:
 script:
  - cabal-1.18 configure -v2
  - cabal-1.18 build
+ - cabal-1.18 test 
 # -O2 causes check warning
 # - cabal-1.18 check
  - cabal-1.18 sdist
