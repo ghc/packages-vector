@@ -342,12 +342,12 @@ instance Monad Vector where
   (>>=) = flip concatMap
 #if !(MIN_VERSION_base(4,13,0))
   {-# INLINE fail #-}
-  fail _= empty
+  fail = Fail.fail -- == \ _str -> empty
 #endif
 
 instance Fail.MonadFail Vector where
   {-# INLINE fail #-}
-  fail _ = Fail.fail -- == empty vector
+  fail _ = empty
 
 instance MonadPlus Vector where
   {-# INLINE mzero #-}
