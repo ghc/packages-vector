@@ -347,7 +347,7 @@ instance Monad Vector where
 
 instance Fail.MonadFail Vector where
   {-# INLINE fail #-}
-  fail _ = empty
+  fail _ = Fail.fail -- == empty vector
 
 instance MonadPlus Vector where
   {-# INLINE mzero #-}
