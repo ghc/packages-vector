@@ -1,4 +1,4 @@
-{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ConstraintKinds, CPP  #-}
 module Tests.Vector (tests) where
 
 import Boilerplater
@@ -34,7 +34,13 @@ import Control.Monad.Zip
 
 import Data.Data
 
+ #if MIN_VERSION_ghc_prim(0,5,0)
 import GHC.Magic (noinline)
+#else
+{-# NOINLINE noinline #-}
+noinline :: a -> a
+noinline x = x
+#endif
 
 
 type CommonContext  a v = (VanillaContext a, VectorContext a v)
