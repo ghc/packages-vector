@@ -34,7 +34,7 @@ import Control.Monad.Zip
 
 import Data.Data
 
- #if MIN_VERSION_ghc_prim(0,5,0)
+#if MIN_VERSION_ghc_prim(0,5,0)
 import GHC.Magic (noinline)
 #else
 {-# NOINLINE noinline #-}
