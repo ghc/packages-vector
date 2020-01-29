@@ -144,7 +144,7 @@ script:
   - cabal new-test -w ${HC} ${TEST} ${BENCH} ${TESTTARGETS}
 
   # cabal check
-  - (cd vector-* && cabal check)
+  - cabal check
 
   # haddock
   - rm -rf ./dist-newstyle
