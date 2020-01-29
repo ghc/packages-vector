@@ -77,20 +77,20 @@ type VectorContext  a v = ( Eq (v a), Show (v a), Arbitrary (v a), CoArbitrary (
 -- TODO: test non-IVector stuff?
 
 testSanity :: forall a v. (CommonContext a v) => v a -> [Test]
-testSanity _ =  {- noinline $ -} [
+testSanity _ =  noinline $  [
         testProperty "fromList.toList == id" prop_fromList_toList,
         testProperty "toList.fromList == id" prop_toList_fromList,
         testProperty "unstream.stream == id" prop_unstream_stream,
         testProperty "stream.unstream == id" prop_stream_unstream
     ]
   where
-    prop_fromList_toList (v :: v a)   =  {- noinline $ -} (V.fromList . V.toList)                        v == v
-    prop_toList_fromList (l :: [a])   =  {- noinline $ -} ((V.toList :: v a -> [a]) . V.fromList)        l == l
-    prop_unstream_stream (v :: v a)   =  {- noinline $ -} (V.unstream . V.stream)                        v == v
-    prop_stream_unstream (s :: S.Bundle v a) =  {- noinline $ -}((V.stream :: v a -> S.Bundle v a) . V.unstream) s == s
+    prop_fromList_toList (v :: v a)   =  noinline $  (V.fromList . V.toList)                        v == v
+    prop_toList_fromList (l :: [a])   =  noinline $  ((V.toList :: v a -> [a]) . V.fromList)        l == l
+    prop_unstream_stream (v :: v a)   =  noinline $  (V.unstream . V.stream)                        v == v
+    prop_stream_unstream (s :: S.Bundle v a) =  noinline $ ((V.stream :: v a -> S.Bundle v a) . V.unstream) s == s
 
 testPolymorphicFunctions :: forall a v. (CommonContext a v, VectorContext Int v) => v a -> [Test]
-testPolymorphicFunctions _ =  noinline   $(testProperties [
+testPolymorphicFunctions _ =  noinline  $  $(testProperties [
         'prop_eq,
 
         -- Length information
@@ -213,203 +213,203 @@ testPolymorphicFunctions _ =  noinline   $(testProperties [
     ])
   where
     -- Prelude
-    prop_eq :: P (v a -> v a -> Bool) = {- noinline $ -}( (==) `eq` (==))
+    prop_eq :: P (v a -> v a -> Bool) = noinline $ ( (==) `eq` (==))
 
-    prop_length :: P (v a -> Int)     =  {- noinline $ -}V.length `eq` length
-    prop_null   :: P (v a -> Bool)    =  {- noinline $ -} V.null `eq` null
+    prop_length :: P (v a -> Int)     =  noinline $ V.length `eq` length
+    prop_null   :: P (v a -> Bool)    =  noinline $  V.null `eq` null
 
-    prop_empty  :: P (v a)            =  {- noinline $ -} V.empty `eq` []
-    prop_singleton :: P (a -> v a)    =  {- noinline $ -} V.singleton `eq` singleton
+    prop_empty  :: P (v a)            =  noinline $  V.empty `eq` []
+    prop_singleton :: P (a -> v a)    =  noinline $  V.singleton `eq` singleton
     prop_replicate :: P (Int -> a -> v a)
-              = {- noinline $ -}  (\n _ -> n < 1000) ===> V.replicate `eq` replicate
-    prop_cons      :: P (a -> v a -> v a) =  {- noinline $ -} V.cons `eq` (:)
-    prop_snoc      :: P (v a -> a -> v a) =  {- noinline $ -} V.snoc `eq` snoc
-    prop_append    :: P (v a -> v a -> v a) =  {- noinline $ -} (V.++) `eq` (++)
-    prop_concat    :: P ([v a] -> v a) =  {- noinline $ -} V.concat `eq` concat
-    prop_force     :: P (v a -> v a)        =  {- noinline $ -} V.force `eq` id
+              = noinline $   (\n _ -> n < 1000) ===> V.replicate `eq` replicate
+    prop_cons      :: P (a -> v a -> v a) =  noinline $  V.cons `eq` (:)
+    prop_snoc      :: P (v a -> a -> v a) =  noinline $  V.snoc `eq` snoc
+    prop_append    :: P (v a -> v a -> v a) =  noinline $  (V.++) `eq` (++)
+    prop_concat    :: P ([v a] -> v a) =  noinline $  V.concat `eq` concat
+    prop_force     :: P (v a -> v a)        =  noinline $  V.force `eq` id
     prop_generate  :: P (Int -> (Int -> a) -> v a)
-              =  {- noinline $ -}(\n _ -> n < 1000) ===> V.generate `eq` Util.generate
+              =  noinline $ (\n _ -> n < 1000) ===> V.generate `eq` Util.generate
     prop_iterateN  :: P (Int -> (a -> a) -> a -> v a)
-              =  {- noinline $ -} (\n _ _ -> n < 1000) ===> V.iterateN `eq` (\n f -> take n . iterate f)
+              =  noinline $  (\n _ _ -> n < 1000) ===> V.iterateN `eq` (\n f -> take n . iterate f)
     prop_iterateNM :: P (Int -> (a -> Writer [Int] a) -> a -> Writer [Int] (v a))
-              =  {- noinline $ -} (\n _ _ -> n < 1000) ===> V.iterateNM `eq` Util.iterateNM
+              =  noinline $  (\n _ _ -> n < 1000) ===> V.iterateNM `eq` Util.iterateNM
     prop_createT :: P ((a, v a) -> (a, v a))
     prop_createT = (\v -> V.createT (T.mapM V.thaw v)) `eq` id
 
-    prop_head      :: P (v a -> a) =  {- noinline $ -}not . V.null ===> V.head `eq` head
-    prop_last      :: P (v a -> a) =  {- noinline $ -}not . V.null ===> V.last `eq` last
-    prop_index        = {- noinline $ -}\xs ->
+    prop_head      :: P (v a -> a) =  noinline $ not . V.null ===> V.head `eq` head
+    prop_last      :: P (v a -> a) =  noinline $ not . V.null ===> V.last `eq` last
+    prop_index        = noinline $ \xs ->
                         not (V.null xs) ==>
                         forAll (choose (0, V.length xs-1)) $ \i ->
                         unP prop xs i
       where
         prop :: P (v a -> Int -> a) = (V.!) `eq` (!!)
-    prop_safeIndex :: P (v a -> Int -> Maybe a) = {- noinline $ -}(V.!?) `eq` fn
+    prop_safeIndex :: P (v a -> Int -> Maybe a) = noinline $ (V.!?) `eq` fn
       where
-        fn xs i = {- noinline $ -} case drop i xs of
+        fn xs i = noinline $  case drop i xs of
                     x:_ | i >= 0 -> Just x
                     _            -> Nothing
-    prop_unsafeHead  :: P (v a -> a) = {- noinline $ -}not . V.null ===> V.unsafeHead `eq` head
-    prop_unsafeLast  :: P (v a -> a) = {- noinline $ -}not . V.null ===> V.unsafeLast `eq` last
-    prop_unsafeIndex  = {- noinline $ -}\xs ->
+    prop_unsafeHead  :: P (v a -> a) = noinline $ not . V.null ===> V.unsafeHead `eq` head
+    prop_unsafeLast  :: P (v a -> a) = noinline $ not . V.null ===> V.unsafeLast `eq` last
+    prop_unsafeIndex  = noinline $ \xs ->
                         not (V.null xs) ==>
                         forAll (choose (0, V.length xs-1)) $ \i ->
                         unP prop xs i
       where
-        prop :: P (v a -> Int -> a) = {- noinline $ -}V.unsafeIndex `eq` (!!)
+        prop :: P (v a -> Int -> a) = noinline $ V.unsafeIndex `eq` (!!)
 
-    prop_slice        =  {- noinline $ -}\xs ->
+    prop_slice        =  noinline $ \xs ->
                         forAll (choose (0, V.length xs))     $ \i ->
                         forAll (choose (0, V.length xs - i)) $ \n ->
                         unP prop i n xs
       where
-        prop :: P (Int -> Int -> v a -> v a) =  {- noinline $ -}V.slice `eq` slice
+        prop :: P (Int -> Int -> v a -> v a) =  noinline $ V.slice `eq` slice
 
-    prop_tail :: P (v a -> v a) = {- noinline $ -}not . V.null ===> V.tail `eq` tail
-    prop_init :: P (v a -> v a) = {- noinline $ -}not . V.null ===> V.init `eq` init
-    prop_take :: P (Int -> v a -> v a) = {- noinline $ -}V.take `eq` take
-    prop_drop :: P (Int -> v a -> v a) = {- noinline $ -}V.drop `eq` drop
-    prop_splitAt :: P (Int -> v a -> (v a, v a)) = {- noinline $ -} V.splitAt `eq` splitAt
+    prop_tail :: P (v a -> v a) = noinline $ not . V.null ===> V.tail `eq` tail
+    prop_init :: P (v a -> v a) = noinline $ not . V.null ===> V.init `eq` init
+    prop_take :: P (Int -> v a -> v a) = noinline $ V.take `eq` take
+    prop_drop :: P (Int -> v a -> v a) = noinline $ V.drop `eq` drop
+    prop_splitAt :: P (Int -> v a -> (v a, v a)) = noinline $  V.splitAt `eq` splitAt
 
-    prop_accum = {- noinline $ -}\f xs ->
+    prop_accum = noinline $ \f xs ->
                  forAll (index_value_pairs (V.length xs)) $ \ps ->
                  unP prop f xs ps
       where
         prop :: P ((a -> a -> a) -> v a -> [(Int,a)] -> v a)
-          = {- noinline $ -}V.accum `eq` accum
+          = noinline $ V.accum `eq` accum
 
-    prop_upd        = {- noinline $ -} \xs ->
+    prop_upd        = noinline $  \xs ->
                         forAll (index_value_pairs (V.length xs)) $ \ps ->
                         unP prop xs ps
       where
-        prop :: P (v a -> [(Int,a)] -> v a) = {- noinline $ -}(V.//) `eq` (//)
+        prop :: P (v a -> [(Int,a)] -> v a) = noinline $ (V.//) `eq` (//)
 
-    prop_backpermute  = {- noinline $ -}\xs ->
+    prop_backpermute  = noinline $ \xs ->
                         forAll (indices (V.length xs)) $ \is ->
                         unP prop xs (V.fromList is)
       where
-        prop :: P (v a -> v Int -> v a) = {- noinline $ -} V.backpermute `eq` backpermute
+        prop :: P (v a -> v Int -> v a) = noinline $  V.backpermute `eq` backpermute
 
-    prop_reverse :: P (v a -> v a) = {- noinline $ -}V.reverse `eq` reverse
+    prop_reverse :: P (v a -> v a) = noinline $ V.reverse `eq` reverse
 
-    prop_map :: P ((a -> a) -> v a -> v a) = {- noinline $ -}V.map `eq` map
-    prop_zipWith :: P ((a -> a -> a) -> v a -> v a -> v a) = {- noinline $ -}V.zipWith `eq` zipWith
+    prop_map :: P ((a -> a) -> v a -> v a) = noinline $ V.map `eq` map
+    prop_zipWith :: P ((a -> a -> a) -> v a -> v a -> v a) = noinline $ V.zipWith `eq` zipWith
     prop_zipWith3 :: P ((a -> a -> a -> a) -> v a -> v a -> v a -> v a)
-             = {- noinline $ -}V.zipWith3 `eq` zipWith3
-    prop_imap :: P ((Int -> a -> a) -> v a -> v a) =  {- noinline $ -}V.imap `eq` imap
+             = noinline $ V.zipWith3 `eq` zipWith3
+    prop_imap :: P ((Int -> a -> a) -> v a -> v a) =  noinline $ V.imap `eq` imap
     prop_imapM :: P ((Int -> a -> Identity a) -> v a -> Identity (v a))
-            = {- noinline $ -}V.imapM `eq` imapM
+            = noinline $ V.imapM `eq` imapM
     prop_imapM_ :: P ((Int -> a -> Writer [a] ()) -> v a -> Writer [a] ())
-            = {- noinline $ -}V.imapM_ `eq` imapM_
+            = noinline $ V.imapM_ `eq` imapM_
     prop_izipWith :: P ((Int -> a -> a -> a) -> v a -> v a -> v a) = V.izipWith `eq` izipWith
     prop_izipWithM :: P ((Int -> a -> a -> Identity a) -> v a -> v a -> Identity (v a))
-            = {- noinline $ -}V.izipWithM `eq` izipWithM
+            = noinline $ V.izipWithM `eq` izipWithM
     prop_izipWithM_ :: P ((Int -> a -> a -> Writer [a] ()) -> v a -> v a -> Writer [a] ())
-            = {- noinline $ -}V.izipWithM_ `eq` izipWithM_
+            = noinline $ V.izipWithM_ `eq` izipWithM_
     prop_izipWith3 :: P ((Int -> a -> a -> a -> a) -> v a -> v a -> v a -> v a)
-             = {- noinline $ -} V.izipWith3 `eq` izipWith3
+             = noinline $  V.izipWith3 `eq` izipWith3
 
-    prop_filter :: P ((a -> Bool) -> v a -> v a) = {- noinline $ -}V.filter `eq` filter
-    prop_ifilter :: P ((Int -> a -> Bool) -> v a -> v a) = {- noinline $ -}V.ifilter `eq` ifilter
-    prop_mapMaybe :: P ((a -> Maybe a) -> v a -> v a) = {- noinline $ -}V.mapMaybe `eq` mapMaybe
-    prop_imapMaybe :: P ((Int -> a -> Maybe a) -> v a -> v a) ={- noinline $ -} V.imapMaybe `eq` imapMaybe
-    prop_takeWhile :: P ((a -> Bool) -> v a -> v a) = {- noinline $ -}V.takeWhile `eq` takeWhile
-    prop_dropWhile :: P ((a -> Bool) -> v a -> v a) = {- noinline $ -}V.dropWhile `eq` dropWhile
+    prop_filter :: P ((a -> Bool) -> v a -> v a) = noinline $ V.filter `eq` filter
+    prop_ifilter :: P ((Int -> a -> Bool) -> v a -> v a) = noinline $ V.ifilter `eq` ifilter
+    prop_mapMaybe :: P ((a -> Maybe a) -> v a -> v a) = noinline $ V.mapMaybe `eq` mapMaybe
+    prop_imapMaybe :: P ((Int -> a -> Maybe a) -> v a -> v a) =noinline $  V.imapMaybe `eq` imapMaybe
+    prop_takeWhile :: P ((a -> Bool) -> v a -> v a) = noinline $ V.takeWhile `eq` takeWhile
+    prop_dropWhile :: P ((a -> Bool) -> v a -> v a) = noinline $ V.dropWhile `eq` dropWhile
     prop_partition :: P ((a -> Bool) -> v a -> (v a, v a))
-      = {- noinline $ -}V.partition `eq` partition
-    prop_span :: P ((a -> Bool) -> v a -> (v a, v a)) = {- noinline $ -}V.span `eq` span
-    prop_break :: P ((a -> Bool) -> v a -> (v a, v a)) = {- noinline $ -}V.break `eq` break
+      = noinline $ V.partition `eq` partition
+    prop_span :: P ((a -> Bool) -> v a -> (v a, v a)) = noinline $ V.span `eq` span
+    prop_break :: P ((a -> Bool) -> v a -> (v a, v a)) = noinline $ V.break `eq` break
 
-    prop_elem    :: P (a -> v a -> Bool) = {- noinline $ -} V.elem `eq` elem
-    prop_notElem :: P (a -> v a -> Bool) = {- noinline $ -}V.notElem `eq` notElem
-    prop_find    :: P ((a -> Bool) -> v a -> Maybe a) = {- noinline $ -}V.find `eq` find
+    prop_elem    :: P (a -> v a -> Bool) = noinline $  V.elem `eq` elem
+    prop_notElem :: P (a -> v a -> Bool) = noinline $ V.notElem `eq` notElem
+    prop_find    :: P ((a -> Bool) -> v a -> Maybe a) = noinline $ V.find `eq` find
     prop_findIndex :: P ((a -> Bool) -> v a -> Maybe Int)
-      = {- noinline $ -}V.findIndex `eq` findIndex
+      = noinline $ V.findIndex `eq` findIndex
     prop_findIndices :: P ((a -> Bool) -> v a -> v Int)
-        = {- noinline $ -}V.findIndices `eq` findIndices
-    prop_elemIndex :: P (a -> v a -> Maybe Int) = {- noinline $ -}V.elemIndex `eq` elemIndex
-    prop_elemIndices :: P (a -> v a -> v Int) = {- noinline $ -}V.elemIndices `eq` elemIndices
+        = noinline $ V.findIndices `eq` findIndices
+    prop_elemIndex :: P (a -> v a -> Maybe Int) = noinline $ V.elemIndex `eq` elemIndex
+    prop_elemIndices :: P (a -> v a -> v Int) = noinline $ V.elemIndices `eq` elemIndices
 
-    prop_foldl :: P ((a -> a -> a) -> a -> v a -> a) = {- noinline $ -}V.foldl `eq` foldl
-    prop_foldl1 :: P ((a -> a -> a) -> v a -> a)     = {- noinline $ -}notNull2 ===>
+    prop_foldl :: P ((a -> a -> a) -> a -> v a -> a) = noinline $ V.foldl `eq` foldl
+    prop_foldl1 :: P ((a -> a -> a) -> v a -> a)     = noinline $ notNull2 ===>
                         V.foldl1 `eq` foldl1
-    prop_foldl' :: P ((a -> a -> a) -> a -> v a -> a) = {- noinline $ -}V.foldl' `eq` foldl'
-    prop_foldl1' :: P ((a -> a -> a) -> v a -> a)     = {- noinline $ -}notNull2 ===>
+    prop_foldl' :: P ((a -> a -> a) -> a -> v a -> a) = noinline $ V.foldl' `eq` foldl'
+    prop_foldl1' :: P ((a -> a -> a) -> v a -> a)     = noinline $ notNull2 ===>
                         V.foldl1' `eq` foldl1'
-    prop_foldr :: P ((a -> a -> a) -> a -> v a -> a) = {- noinline $ -}(V.foldr `eq` foldr)
-    prop_foldr1 :: P ((a -> a -> a) -> v a -> a)     = {- noinline $ -}( notNull2 ===>   V.foldr1 `eq` foldr1)
-    prop_foldr' :: P ((a -> a -> a) -> a -> v a -> a) = {- noinline $ -}( V.foldr' `eq` foldr)
+    prop_foldr :: P ((a -> a -> a) -> a -> v a -> a) = noinline $ (V.foldr `eq` foldr)
+    prop_foldr1 :: P ((a -> a -> a) -> v a -> a)     = noinline $ ( notNull2 ===>   V.foldr1 `eq` foldr1)
+    prop_foldr' :: P ((a -> a -> a) -> a -> v a -> a) = noinline $ ( V.foldr' `eq` foldr)
     prop_foldr1' :: P ((a -> a -> a) -> v a -> a)
-                 = {- noinline $ -}(notNull2 ===>   V.foldr1' `eq` foldr1)
+                 = noinline $ (notNull2 ===>   V.foldr1' `eq` foldr1)
     prop_ifoldl :: P ((a -> Int -> a -> a) -> a -> v a -> a)
-        = {- noinline $ -}V.ifoldl `eq` ifoldl
+        = noinline $ V.ifoldl `eq` ifoldl
     prop_ifoldl' :: P ((a -> Int -> a -> a) -> a -> v a -> a)
-        = {- noinline $ -}V.ifoldl' `eq` ifoldl
+        = noinline $ V.ifoldl' `eq` ifoldl
     prop_ifoldr :: P ((Int -> a -> a -> a) -> a -> v a -> a)
-        = {- noinline $ -}V.ifoldr `eq` ifoldr
+        = noinline $ V.ifoldr `eq` ifoldr
     prop_ifoldr' :: P ((Int -> a -> a -> a) -> a -> v a -> a)
-        = {- noinline $ -}V.ifoldr' `eq` ifoldr
+        = noinline $ V.ifoldr' `eq` ifoldr
     prop_ifoldM :: P ((a -> Int -> a -> Identity a) -> a -> v a -> Identity a)
-        = {- noinline $ -}V.ifoldM `eq` ifoldM
+        = noinline $ V.ifoldM `eq` ifoldM
     prop_ifoldM' :: P ((a -> Int -> a -> Identity a) -> a -> v a -> Identity a)
-        = {- noinline $ -}V.ifoldM' `eq` ifoldM
+        = noinline $ V.ifoldM' `eq` ifoldM
     prop_ifoldM_ :: P ((() -> Int -> a -> Writer [a] ()) -> () -> v a -> Writer [a] ())
-        = {- noinline $ -}V.ifoldM_ `eq` ifoldM_
+        = noinline $ V.ifoldM_ `eq` ifoldM_
     prop_ifoldM'_ :: P ((() -> Int -> a -> Writer [a] ()) -> () -> v a -> Writer [a] ())
-        = {- noinline $ -}V.ifoldM'_ `eq` ifoldM_
+        = noinline $ V.ifoldM'_ `eq` ifoldM_
 
-    prop_all :: P ((a -> Bool) -> v a -> Bool) = {- noinline $ -}V.all `eq` all
-    prop_any :: P ((a -> Bool) -> v a -> Bool) ={- noinline $ -} V.any `eq` any
+    prop_all :: P ((a -> Bool) -> v a -> Bool) = noinline $ V.all `eq` all
+    prop_any :: P ((a -> Bool) -> v a -> Bool) =noinline $  V.any `eq` any
 
     prop_prescanl :: P ((a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.prescanl `eq` prescanl
+                = noinline $ V.prescanl `eq` prescanl
     prop_prescanl' :: P ((a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.prescanl' `eq` prescanl
+                = noinline $ V.prescanl' `eq` prescanl
     prop_postscanl :: P ((a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.postscanl `eq` postscanl
+                = noinline $ V.postscanl `eq` postscanl
     prop_postscanl' :: P ((a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.postscanl' `eq` postscanl
+                = noinline $ V.postscanl' `eq` postscanl
     prop_scanl :: P ((a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.scanl `eq` scanl
+                = noinline $ V.scanl `eq` scanl
     prop_scanl' :: P ((a -> a -> a) -> a -> v a -> v a)
-               = {- noinline $ -}V.scanl' `eq` scanl
-    prop_scanl1 :: P ((a -> a -> a) -> v a -> v a) = {- noinline $ -}notNull2 ===>
+               = noinline $ V.scanl' `eq` scanl
+    prop_scanl1 :: P ((a -> a -> a) -> v a -> v a) = noinline $ notNull2 ===>
                  V.scanl1 `eq` scanl1
-    prop_scanl1' :: P ((a -> a -> a) -> v a -> v a) = {- noinline $ -}notNull2 ===>
+    prop_scanl1' :: P ((a -> a -> a) -> v a -> v a) = noinline $ notNull2 ===>
                  V.scanl1' `eq` scanl1
     prop_iscanl :: P ((Int -> a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.iscanl `eq` iscanl
+                = noinline $ V.iscanl `eq` iscanl
     prop_iscanl' :: P ((Int -> a -> a -> a) -> a -> v a -> v a)
-               = {- noinline $ -}V.iscanl' `eq` iscanl
+               = noinline $ V.iscanl' `eq` iscanl
 
     prop_prescanr :: P ((a -> a -> a) -> a -> v a -> v a)
                 =  noinline $V.prescanr `eq` prescanr
     prop_prescanr' :: P ((a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.prescanr' `eq` prescanr
+                = noinline $ V.prescanr' `eq` prescanr
     prop_postscanr :: P ((a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.postscanr `eq` postscanr
+                = noinline $ V.postscanr `eq` postscanr
     prop_postscanr' :: P ((a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.postscanr' `eq` postscanr
+                = noinline $ V.postscanr' `eq` postscanr
     prop_scanr :: P ((a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.scanr `eq` scanr
+                = noinline $ V.scanr `eq` scanr
     prop_scanr' :: P ((a -> a -> a) -> a -> v a -> v a)
-               = {- noinline $ -}V.scanr' `eq` scanr
+               = noinline $ V.scanr' `eq` scanr
     prop_iscanr :: P ((Int -> a -> a -> a) -> a -> v a -> v a)
-                = {- noinline $ -}V.iscanr `eq` iscanr
+                = noinline $ V.iscanr `eq` iscanr
     prop_iscanr' :: P ((Int -> a -> a -> a) -> a -> v a -> v a)
-               = {- noinline $ -}V.iscanr' `eq` iscanr
-    prop_scanr1 :: P ((a -> a -> a) -> v a -> v a) =  {- noinline $ -}notNull2 ===>
+               = noinline $ V.iscanr' `eq` iscanr
+    prop_scanr1 :: P ((a -> a -> a) -> v a -> v a) =  noinline $ notNull2 ===>
                  V.scanr1 `eq` scanr1
-    prop_scanr1' :: P ((a -> a -> a) -> v a -> v a) = {- noinline $ -}notNull2 ===>
+    prop_scanr1' :: P ((a -> a -> a) -> v a -> v a) = noinline $ notNull2 ===>
                  V.scanr1' `eq` scanr1
 
-    prop_concatMap    = {- noinline $ -}forAll arbitrary $ \xs ->
+    prop_concatMap    = noinline $ forAll arbitrary $ \xs ->
                         forAll (sized (\n -> resize (n `div` V.length xs) arbitrary)) $ \f -> unP prop f xs
       where
-        prop :: P ((a -> v a) -> v a -> v a) ={- noinline $ -} V.concatMap `eq` concatMap
+        prop :: P ((a -> v a) -> v a -> v a) =noinline $  V.concatMap `eq` concatMap
 
     prop_uniq :: P (v a -> v a)
-      = {- noinline $ -}V.uniq `eq` (map head . group)
+      = noinline $ V.uniq `eq` (map head . group)
     --prop_span         = (V.span :: (a -> Bool) -> v a -> (v a, v a))  `eq2` span
     --prop_break        = (V.break :: (a -> Bool) -> v a -> (v a, v a)) `eq2` break
     --prop_splitAt      = (V.splitAt :: Int -> v a -> (v a, v a))       `eq2` splitAt
@@ -434,8 +434,8 @@ testPolymorphicFunctions _ =  noinline   $(testProperties [
     -- is achieved by injecting our own bit of state into the unfold - the maximum number of unfolds allowed.
     limitUnfolds f (theirs, ours)
         | ours > 0
-        , Just (out, theirs') <- f theirs = {- noinline $ -}Just (out, (theirs', ours - 1))
-        | otherwise                       = {- noinline $ -}Nothing
+        , Just (out, theirs') <- f theirs = noinline $ Just (out, (theirs', ours - 1))
+        | otherwise                       = noinline $ Nothing
     limitUnfoldsM f (theirs, ours)
         | ours >  0 = noinline $
                          do r <- f theirs ;  return $ (\(a,b) -> (a,(b,ours - 1))) `fmap` r
@@ -443,29 +443,29 @@ testPolymorphicFunctions _ =  noinline   $(testProperties [
 
 
     prop_unfoldr :: P (Int -> (Int -> Maybe (a,Int)) -> Int -> v a)
-         ={- noinline $ -}(\n f a -> V.unfoldr (limitUnfolds f) (a, n))
+         =noinline $ (\n f a -> V.unfoldr (limitUnfolds f) (a, n))
            `eq` (\n f a -> unfoldr (limitUnfolds f) (a, n))
     prop_unfoldrN :: P (Int -> (Int -> Maybe (a,Int)) -> Int -> v a)
-         = {- noinline $ -}V.unfoldrN `eq` (\n f a -> unfoldr (limitUnfolds f) (a, n))
+         = noinline $ V.unfoldrN `eq` (\n f a -> unfoldr (limitUnfolds f) (a, n))
     prop_unfoldrM :: P (Int -> (Int -> Writer [Int] (Maybe (a,Int))) -> Int -> Writer [Int] (v a))
-         = {- noinline $ -}(\n f a -> V.unfoldrM (limitUnfoldsM f) (a,n))
+         = noinline $ (\n f a -> V.unfoldrM (limitUnfoldsM f) (a,n))
            `eq` (\n f a -> Util.unfoldrM (limitUnfoldsM f) (a, n))
     prop_unfoldrNM :: P (Int -> (Int -> Writer [Int] (Maybe (a,Int))) -> Int -> Writer [Int] (v a))
-         = {- noinline $ -}V.unfoldrNM `eq` (\n f a -> Util.unfoldrM (limitUnfoldsM f) (a, n))
+         = noinline $ V.unfoldrNM `eq` (\n f a -> Util.unfoldrM (limitUnfoldsM f) (a, n))
 
-    prop_constructN  = {- noinline $ -}\f -> forAll (choose (0,20)) $ \n -> unP prop n f
+    prop_constructN  = noinline $ \f -> forAll (choose (0,20)) $ \n -> unP prop n f
       where
         prop :: P (Int -> (v a -> a) -> v a) = V.constructN `eq` constructN []
 
-        constructN xs 0 _ = {- noinline $ -}xs
-        constructN xs n f = {- noinline $ -}constructN (xs ++ [f xs]) (n-1) f
+        constructN xs 0 _ = noinline $ xs
+        constructN xs n f = noinline $ constructN (xs ++ [f xs]) (n-1) f
 
-    prop_constructrN  =  {- noinline $ -}\f -> forAll (choose (0,20)) $ \n -> unP prop n f
+    prop_constructrN  =  noinline $ \f -> forAll (choose (0,20)) $ \n -> unP prop n f
       where
         prop :: P (Int -> (v a -> a) -> v a) = V.constructrN `eq` constructrN []
 
         constructrN xs 0 _ = xs
-        constructrN xs n f ={- noinline $ -} constructrN (f xs : xs) (n-1) f
+        constructrN xs n f =noinline $  constructrN (f xs : xs) (n-1) f
 
 
 
@@ -475,14 +475,14 @@ testTuplyFunctions _ = noinline $(testProperties [ 'prop_zip, 'prop_zip3
                                         , 'prop_mzip, 'prop_munzip
                                         ])
   where
-    prop_zip    :: P (v a -> v a -> v (a, a))           ={- noinline $ -}V.zip `eq` zip
-    prop_zip3   :: P (v a -> v a -> v a -> v (a, a, a)) ={- noinline $ -}V.zip3 `eq` zip3
-    prop_unzip  :: P (v (a, a) -> (v a, v a))           ={- noinline $ -}V.unzip `eq` unzip
-    prop_unzip3 :: P (v (a, a, a) -> (v a, v a, v a))   ={- noinline $ -}V.unzip3 `eq` unzip3
+    prop_zip    :: P (v a -> v a -> v (a, a))           =noinline $ V.zip `eq` zip
+    prop_zip3   :: P (v a -> v a -> v a -> v (a, a, a)) =noinline $ V.zip3 `eq` zip3
+    prop_unzip  :: P (v (a, a) -> (v a, v a))           =noinline $ V.unzip `eq` unzip
+    prop_unzip3 :: P (v (a, a, a) -> (v a, v a, v a))   =noinline $ V.unzip3 `eq` unzip3
     prop_mzip   :: P (Data.Vector.Vector a -> Data.Vector.Vector a -> Data.Vector.Vector (a, a))
-        ={- noinline $ -}mzip `eq` zip
+        =noinline $ mzip `eq` zip
     prop_munzip :: P (Data.Vector.Vector (a, a) -> (Data.Vector.Vector a, Data.Vector.Vector a))
-        ={- noinline $ -}munzip `eq` unzip
+        =noinline $ munzip `eq` unzip
 
 testOrdFunctions :: forall a v. (CommonContext a v, Ord a, Ord (v a)) => v a -> [Test]
 testOrdFunctions _ = noinline  $(testProperties
@@ -492,7 +492,7 @@ testOrdFunctions _ = noinline  $(testProperties
    'prop_maximumBy, 'prop_minimumBy,
    'prop_maxIndexBy, 'prop_minIndexBy])
   where
-    prop_compare :: P (v a -> v a -> Ordering) = {- noinline $ -} compare `eq` compare
+    prop_compare :: P (v a -> v a -> Ordering) = noinline $  compare `eq` compare
     prop_maximum :: P (v a -> a) = not . V.null ===> V.maximum `eq` maximum
     prop_minimum :: P (v a -> a) = not . V.null ===> V.minimum `eq` minimum
     prop_minIndex :: P (v a -> Int) = not . V.null ===> V.minIndex `eq` minIndex
@@ -512,20 +512,20 @@ testEnumFunctions _ =noinline $(testProperties
     'prop_enumFromTo, 'prop_enumFromThenTo])
   where
     prop_enumFromN :: P (a -> Int -> v a)
-      = {- noinline $ -}(\_ n -> n < 1000)
+      = noinline $ (\_ n -> n < 1000)
         ===> V.enumFromN `eq` (\x n -> take n $ scanl (+) x $ repeat 1)
 
     prop_enumFromThenN :: P (a -> a -> Int -> v a)
-      = {- noinline $ -}(\_ _ n -> n < 1000)
+      = noinline $ (\_ _ n -> n < 1000)
         ===> V.enumFromStepN `eq` (\x y n -> take n $ scanl (+) x $ repeat y)
 
-    prop_enumFromTo = {- noinline $ -}\m ->
+    prop_enumFromTo = noinline $ \m ->
                       forAll (choose (-2,100)) $ \n ->
                       unP prop m (m+n)
       where
-        prop  :: P (a -> a -> v a) = {- noinline $ -}V.enumFromTo `eq` enumFromTo
+        prop  :: P (a -> a -> v a) = noinline $ V.enumFromTo `eq` enumFromTo
 
-    prop_enumFromThenTo = {- noinline $ -}\i j ->
+    prop_enumFromThenTo = noinline $ \i j ->
                           j /= i ==>
                           forAll (choose (ks i j)) $ \k ->
                           unP prop i j k
@@ -541,15 +541,15 @@ testMonoidFunctions :: forall a v. (CommonContext a v, Monoid (v a)) => v a -> [
 testMonoidFunctions _ = noinline $(testProperties
   [ 'prop_mempty, 'prop_mappend, 'prop_mconcat ])
   where
-    prop_mempty  :: P (v a)               = {- noinline $ -}mempty `eq` mempty
-    prop_mappend :: P (v a -> v a -> v a) = {- noinline $ -}mappend `eq` mappend
-    prop_mconcat :: P ([v a] -> v a)      = {- noinline $ -}mconcat `eq` mconcat
+    prop_mempty  :: P (v a)               = noinline $ mempty `eq` mempty
+    prop_mappend :: P (v a -> v a -> v a) = noinline $ mappend `eq` mappend
+    prop_mconcat :: P ([v a] -> v a)      = noinline $ mconcat `eq` mconcat
 
 testFunctorFunctions :: forall a v. (CommonContext a v, Functor v) => v a -> [Test]
 testFunctorFunctions _ =noinline  $(testProperties
   [ 'prop_fmap ])
   where
-    prop_fmap :: P ((a -> a) -> v a -> v a) =  {- noinline $ -} fmap `eq` fmap
+    prop_fmap :: P ((a -> a) -> v a -> v a) =  noinline $  fmap `eq` fmap
 
 testMonadFunctions :: forall a v. (CommonContext a v, Monad v) => v a -> [Test]
 testMonadFunctions _ = noinline  $(testProperties
@@ -611,7 +611,7 @@ testDataFunctions _ = noinline  $(testProperties ['prop_glength])
         toA x = maybe (glength x) (const 1) (cast x :: Maybe a)
 
 testGeneralBoxedVector :: forall a. (CommonContext a Data.Vector.Vector, Ord a, Data a) => Data.Vector.Vector a -> [Test]
-testGeneralBoxedVector dummy = {- noinline $ -}concatMap ($ dummy) [
+testGeneralBoxedVector dummy = noinline $ concatMap ($ dummy) [
         testSanity,
         testPolymorphicFunctions,
         testOrdFunctions,
@@ -625,14 +625,14 @@ testGeneralBoxedVector dummy = {- noinline $ -}concatMap ($ dummy) [
         testDataFunctions
     ]
 
-testBoolBoxedVector dummy = {- noinline $ -}concatMap ($ dummy)
+testBoolBoxedVector dummy = noinline $ concatMap ($ dummy)
   [
     testGeneralBoxedVector
   , testBoolFunctions
   ]
 
 testNumericBoxedVector :: forall a. (CommonContext a Data.Vector.Vector, Ord a, Num a, Enum a, Random a, Data a) => Data.Vector.Vector a -> [Test]
-testNumericBoxedVector dummy = {- noinline $ -}concatMap ($ dummy)
+testNumericBoxedVector dummy = noinline $ concatMap ($ dummy)
   [
     testGeneralBoxedVector
   , testNumFunctions
@@ -641,7 +641,7 @@ testNumericBoxedVector dummy = {- noinline $ -}concatMap ($ dummy)
 
 
 testGeneralPrimitiveVector :: forall a. (CommonContext a Data.Vector.Primitive.Vector, Data.Vector.Primitive.Prim a, Ord a, Data a) => Data.Vector.Primitive.Vector a -> [Test]
-testGeneralPrimitiveVector dummy =  {- noinline $ -}concatMap ($ dummy) [
+testGeneralPrimitiveVector dummy =  noinline $ concatMap ($ dummy) [
         testSanity,
         testPolymorphicFunctions,
         testOrdFunctions,
@@ -650,7 +650,7 @@ testGeneralPrimitiveVector dummy =  {- noinline $ -}concatMap ($ dummy) [
     ]
 
 testNumericPrimitiveVector :: forall a. (CommonContext a Data.Vector.Primitive.Vector, Data.Vector.Primitive.Prim a, Ord a, Num a, Enum a, Random a, Data a) => Data.Vector.Primitive.Vector a -> [Test]
-testNumericPrimitiveVector dummy =  {- noinline $ -}concatMap ($ dummy)
+testNumericPrimitiveVector dummy =  noinline $ concatMap ($ dummy)
  [
    testGeneralPrimitiveVector
  , testNumFunctions
@@ -659,7 +659,7 @@ testNumericPrimitiveVector dummy =  {- noinline $ -}concatMap ($ dummy)
 
 
 testGeneralStorableVector :: forall a. (CommonContext a Data.Vector.Storable.Vector, Data.Vector.Storable.Storable a, Ord a, Data a) => Data.Vector.Storable.Vector a -> [Test]
-testGeneralStorableVector dummy =  {- noinline $ -}concatMap ($ dummy) [
+testGeneralStorableVector dummy =  noinline $ concatMap ($ dummy) [
         testSanity,
         testPolymorphicFunctions,
         testOrdFunctions,
@@ -668,7 +668,7 @@ testGeneralStorableVector dummy =  {- noinline $ -}concatMap ($ dummy) [
     ]
 
 testNumericStorableVector :: forall a. (CommonContext a Data.Vector.Storable.Vector, Data.Vector.Storable.Storable a, Ord a, Num a, Enum a, Random a, Data a) => Data.Vector.Storable.Vector a -> [Test]
-testNumericStorableVector dummy =  {- noinline $ -}concatMap ($ dummy)
+testNumericStorableVector dummy =  noinline $ concatMap ($ dummy)
   [
     testGeneralStorableVector
   , testNumFunctions
@@ -677,7 +677,7 @@ testNumericStorableVector dummy =  {- noinline $ -}concatMap ($ dummy)
 
 
 testGeneralUnboxedVector :: forall a. (CommonContext a Data.Vector.Unboxed.Vector, Data.Vector.Unboxed.Unbox a, Ord a, Data a) => Data.Vector.Unboxed.Vector a -> [Test]
-testGeneralUnboxedVector dummy =  {- noinline $ -} concatMap ($ dummy) [
+testGeneralUnboxedVector dummy =  noinline $  concatMap ($ dummy) [
         testSanity,
         testPolymorphicFunctions,
         testOrdFunctions,
@@ -686,20 +686,20 @@ testGeneralUnboxedVector dummy =  {- noinline $ -} concatMap ($ dummy) [
     ]
 
 testUnitUnboxedVector:: Data.Vector.Unboxed.Vector () -> [Test]
-testUnitUnboxedVector dummy =  {- noinline $ -}concatMap ($ dummy)
+testUnitUnboxedVector dummy =  noinline $ concatMap ($ dummy)
   [
     testGeneralUnboxedVector
   ]
 
 testBoolUnboxedVector ::  Data.Vector.Unboxed.Vector Bool -> [Test]
-testBoolUnboxedVector dummy =  {- noinline $ -}concatMap ($ dummy)
+testBoolUnboxedVector dummy =  noinline $ concatMap ($ dummy)
   [
     testGeneralUnboxedVector
   , testBoolFunctions
   ]
 
 testNumericUnboxedVector :: forall a. (CommonContext a Data.Vector.Unboxed.Vector, Data.Vector.Unboxed.Unbox a, Ord a, Num a, Enum a, Random a, Data a) => Data.Vector.Unboxed.Vector a -> [Test]
-testNumericUnboxedVector dummy =  {- noinline $ -}concatMap ($ dummy)
+testNumericUnboxedVector dummy =  noinline $ concatMap ($ dummy)
   [
     testGeneralUnboxedVector
   , testNumFunctions
@@ -712,21 +712,21 @@ testTupleUnboxedVector dummy = concatMap ($ dummy)
     testGeneralUnboxedVector
   ]
 
-tests =  {- noinline $ -} [
-        testGroup "Data.Vector.Vector (Bool)"           ( {- noinline $ -}testBoolBoxedVector      (undefined :: Data.Vector.Vector Bool)),
-        testGroup "Data.Vector.Vector (Int)"            ( {- noinline $ -}testNumericBoxedVector   (undefined :: Data.Vector.Vector Int)),
+tests =  noinline $  [
+        testGroup "Data.Vector.Vector (Bool)"           ( noinline $ testBoolBoxedVector      (undefined :: Data.Vector.Vector Bool)),
+        testGroup "Data.Vector.Vector (Int)"            ( noinline $ testNumericBoxedVector   (undefined :: Data.Vector.Vector Int)),
 
-        testGroup "Data.Vector.Primitive.Vector (Int)"    ( {- noinline $ -} testNumericPrimitiveVector (undefined :: Data.Vector.Primitive.Vector Int)),
-        testGroup "Data.Vector.Primitive.Vector (Double)" ( {- noinline $ -} testNumericPrimitiveVector (undefined :: Data.Vector.Primitive.Vector Double)),
+        testGroup "Data.Vector.Primitive.Vector (Int)"    ( noinline $  testNumericPrimitiveVector (undefined :: Data.Vector.Primitive.Vector Int)),
+        testGroup "Data.Vector.Primitive.Vector (Double)" ( noinline $  testNumericPrimitiveVector (undefined :: Data.Vector.Primitive.Vector Double)),
 
-        testGroup "Data.Vector.Storable.Vector (Int)"    ( {- noinline $ -} testNumericStorableVector (undefined :: Data.Vector.Storable.Vector Int)),
-        testGroup "Data.Vector.Storable.Vector (Double)" ( {- noinline $ -} testNumericStorableVector (undefined :: Data.Vector.Storable.Vector Double)),
+        testGroup "Data.Vector.Storable.Vector (Int)"    ( noinline $  testNumericStorableVector (undefined :: Data.Vector.Storable.Vector Int)),
+        testGroup "Data.Vector.Storable.Vector (Double)" ( noinline $  testNumericStorableVector (undefined :: Data.Vector.Storable.Vector Double)),
 
-        testGroup "Data.Vector.Unboxed.Vector ()"       ( {- noinline $ -} testUnitUnboxedVector (undefined :: Data.Vector.Unboxed.Vector ())),
-        testGroup "Data.Vector.Unboxed.Vector (Bool)"       ( {- noinline $ -} testBoolUnboxedVector (undefined :: Data.Vector.Unboxed.Vector Bool)),
-        testGroup "Data.Vector.Unboxed.Vector (Int)"    ( {- noinline $ -} testNumericUnboxedVector (undefined :: Data.Vector.Unboxed.Vector Int)),
-        testGroup "Data.Vector.Unboxed.Vector (Double)" ( {- noinline $ -} testNumericUnboxedVector (undefined :: Data.Vector.Unboxed.Vector Double)),
-       testGroup "Data.Vector.Unboxed.Vector (Int,Bool)" ( {- noinline $ -} testTupleUnboxedVector (undefined :: Data.Vector.Unboxed.Vector (Int,Bool))),
-         testGroup "Data.Vector.Unboxed.Vector (Int,Bool,Int)" ( {- noinline $ -} testTupleUnboxedVector (undefined :: Data.Vector.Unboxed.Vector (Int,Bool,Int)))
+        testGroup "Data.Vector.Unboxed.Vector ()"       ( noinline $  testUnitUnboxedVector (undefined :: Data.Vector.Unboxed.Vector ())),
+        testGroup "Data.Vector.Unboxed.Vector (Bool)"       ( noinline $  testBoolUnboxedVector (undefined :: Data.Vector.Unboxed.Vector Bool)),
+        testGroup "Data.Vector.Unboxed.Vector (Int)"    ( noinline $  testNumericUnboxedVector (undefined :: Data.Vector.Unboxed.Vector Int)),
+        testGroup "Data.Vector.Unboxed.Vector (Double)" ( noinline $  testNumericUnboxedVector (undefined :: Data.Vector.Unboxed.Vector Double)),
+       testGroup "Data.Vector.Unboxed.Vector (Int,Bool)" ( noinline $  testTupleUnboxedVector (undefined :: Data.Vector.Unboxed.Vector (Int,Bool))),
+         testGroup "Data.Vector.Unboxed.Vector (Int,Bool,Int)" ( noinline $  testTupleUnboxedVector (undefined :: Data.Vector.Unboxed.Vector (Int,Bool,Int)))
 
     ]
