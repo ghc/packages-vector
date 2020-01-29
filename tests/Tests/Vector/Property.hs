@@ -1,9 +1,26 @@
 {-# LANGUAGE ConstraintKinds #-}
-module Tests.Vector.Property where
-  -- ( CommonContext
-  -- , VanillaContext
-  -- , VectorContext
-  -- ) where
+module Tests.Vector.Property
+  ( CommonContext
+  , VanillaContext
+  , VectorContext
+  , testSanity
+  , testPolymorphicFunctions
+  , testTuplyFunctions
+  , testOrdFunctions
+  , testEnumFunctions
+  , testMonoidFunctions
+  , testFunctorFunctions
+  , testMonadFunctions
+  , testApplicativeFunctions
+  , testAlternativeFunctions
+  , testBoolFunctions
+  , testNumFunctions
+  , testNestedVectorFunctions
+  , testDataFunctions
+  -- re-exports
+  , Data
+  , Random
+  ) where
 
 import Boilerplater
 import Utilities as Util hiding (limitUnfolds)
@@ -15,9 +32,6 @@ import Data.Orphans ()
 
 import qualified Data.Vector.Generic as V
 import qualified Data.Vector
-import qualified Data.Vector.Primitive
-import qualified Data.Vector.Storable
-import qualified Data.Vector.Unboxed
 import qualified Data.Vector.Fusion.Bundle as S
 
 import Test.QuickCheck
@@ -78,6 +92,7 @@ type VectorContext  a v = ( Eq (v a), Show (v a), Arbitrary (v a), CoArbitrary (
 -- TODO: test non-IVector stuff?
 
 testSanity :: forall a v. (CommonContext a v) => v a -> [Test]
+{-# INLINE testSanity #-}
 testSanity _ = [
         testProperty "fromList.toList == id" prop_fromList_toList,
         testProperty "toList.fromList == id" prop_toList_fromList,
@@ -91,6 +106,8 @@ testSanity _ = [
     prop_stream_unstream (s :: S.Bundle v a) = ((V.stream :: v a -> S.Bundle v a) . V.unstream) s == s
 
 testPolymorphicFunctions :: forall a v. (CommonContext a v, VectorContext Int v) => v a -> [Test]
+-- FIXME: inlining of unboxed properties blows up the memory during compilation. See #272
+--{-# INLINE testPolymorphicFunctions #-}
 testPolymorphicFunctions _ = $(testProperties [
         'prop_eq,
 
@@ -480,7 +497,8 @@ partitionWith f (x:xs) = case f x of
                          Right c -> (bs, c:cs)
     where (bs,cs) = partitionWith f xs
 
-testTuplyFunctions:: forall a v. (CommonContext a v, VectorContext (a, a) v, VectorContext (a, a, a) v) => v a -> [Test]
+testTuplyFunctions :: forall a v. (CommonContext a v, VectorContext (a, a) v, VectorContext (a, a, a) v) => v a -> [Test]
+{-# INLINE testTuplyFunctions #-}
 testTuplyFunctions _ = $(testProperties [ 'prop_zip, 'prop_zip3
                                         , 'prop_unzip, 'prop_unzip3
                                         , 'prop_mzip, 'prop_munzip
@@ -496,6 +514,7 @@ testTuplyFunctions _ = $(testProperties [ 'prop_zip, 'prop_zip3
         = munzip `eq` unzip
 
 testOrdFunctions :: forall a v. (CommonContext a v, Ord a, Ord (v a)) => v a -> [Test]
+{-# INLINE testOrdFunctions #-}
 testOrdFunctions _ = $(testProperties
   ['prop_compare,
    'prop_maximum, 'prop_minimum,
@@ -518,6 +537,7 @@ testOrdFunctions _ = $(testProperties
       not . V.null ===> V.minIndexBy compare `eq` minIndex
 
 testEnumFunctions :: forall a v. (CommonContext a v, Enum a, Ord a, Num a, Random a) => v a -> [Test]
+{-# INLINE testEnumFunctions #-}
 testEnumFunctions _ = $(testProperties
   [ 'prop_enumFromN, 'prop_enumFromThenN,
     'prop_enumFromTo, 'prop_enumFromThenTo])
@@ -549,6 +569,7 @@ testEnumFunctions _ = $(testProperties
             d = abs (j-i)
 
 testMonoidFunctions :: forall a v. (CommonContext a v, Monoid (v a)) => v a -> [Test]
+{-# INLINE testMonoidFunctions #-}
 testMonoidFunctions _ = $(testProperties
   [ 'prop_mempty, 'prop_mappend, 'prop_mconcat ])
   where
@@ -557,12 +578,14 @@ testMonoidFunctions _ = $(testProperties
     prop_mconcat :: P ([v a] -> v a)      = mconcat `eq` mconcat
 
 testFunctorFunctions :: forall a v. (CommonContext a v, Functor v) => v a -> [Test]
+{-# INLINE testFunctorFunctions #-}
 testFunctorFunctions _ = $(testProperties
   [ 'prop_fmap ])
   where
     prop_fmap :: P ((a -> a) -> v a -> v a) = fmap `eq` fmap
 
 testMonadFunctions :: forall a v. (CommonContext a v, Monad v) => v a -> [Test]
+{-# INLINE testMonadFunctions #-}
 testMonadFunctions _ = $(testProperties
   [ 'prop_return, 'prop_bind ])
   where
@@ -570,6 +593,7 @@ testMonadFunctions _ = $(testProperties
     prop_bind   :: P (v a -> (a -> v a) -> v a) = (>>=) `eq` (>>=)
 
 testApplicativeFunctions :: forall a v. (CommonContext a v, V.Vector v (a -> a), Applicative.Applicative v) => v a -> [Test]
+{-# INLINE testApplicativeFunctions #-}
 testApplicativeFunctions _ = $(testProperties
   [ 'prop_applicative_pure, 'prop_applicative_appl ])
   where
@@ -579,6 +603,7 @@ testApplicativeFunctions _ = $(testProperties
       = \fs -> (Applicative.<*>) (V.fromList fs) `eq` (Applicative.<*>) fs
 
 testAlternativeFunctions :: forall a v. (CommonContext a v, Applicative.Alternative v) => v a -> [Test]
+{-# INLINE testAlternativeFunctions #-}
 testAlternativeFunctions _ = $(testProperties
   [ 'prop_alternative_empty, 'prop_alternative_or ])
   where
@@ -587,18 +612,21 @@ testAlternativeFunctions _ = $(testProperties
       = (Applicative.<|>) `eq` (Applicative.<|>)
 
 testBoolFunctions :: forall v. (CommonContext Bool v) => v Bool -> [Test]
+{-# INLINE testBoolFunctions #-}
 testBoolFunctions _ = $(testProperties ['prop_and, 'prop_or])
   where
     prop_and :: P (v Bool -> Bool) = V.and `eq` and
     prop_or  :: P (v Bool -> Bool) = V.or `eq` or
 
 testNumFunctions :: forall a v. (CommonContext a v, Num a) => v a -> [Test]
+{-# INLINE testNumFunctions #-}
 testNumFunctions _ = $(testProperties ['prop_sum, 'prop_product])
   where
     prop_sum     :: P (v a -> a) = V.sum `eq` sum
     prop_product :: P (v a -> a) = V.product `eq` product
 
 testNestedVectorFunctions :: forall a v. (CommonContext a v) => v a -> [Test]
+{-# INLINE testNestedVectorFunctions #-}
 testNestedVectorFunctions _ = $(testProperties [])
   where
     -- Prelude
@@ -611,6 +639,7 @@ testNestedVectorFunctions _ = $(testProperties [])
     --prop_tails        = V.tails       `eq1` (tails       :: v a -> [v a])
 
 testDataFunctions :: forall a v. (CommonContext a v, Data a, Data (v a)) => v a -> [Test]
+{-# INLINE testDataFunctions #-}
 testDataFunctions _ = $(testProperties ['prop_glength])
   where
     prop_glength :: P (v a -> Int) = glength `eq` glength
