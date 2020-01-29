@@ -80,8 +80,8 @@ before_install:
 install:
   - cabal --version
   - echo "$(${HC} --version) [$(${HC} --print-project-git-commit-id 2> /dev/null || echo '?')]"
-  - BENCH=${BENCH---enable-benchmarks}
-  - TEST=${TEST---enable-tests}
+  # - BENCH=${BENCH---enable-benchmarks}
+  # - TEST=${TEST---enable-tests}
   - HADDOCK=${HADDOCK-true}
   - UNCONSTRAINED=${UNCONSTRAINED-true}
   - NOINSTALLEDCONSTRAINTS=${NOINSTALLEDCONSTRAINTS-false}
@@ -131,17 +131,17 @@ script:
   - mv "."/dist/vector-*.tar.gz ${DISTDIR}/
   - cd ${DISTDIR} || false
   - find . -maxdepth 1 -name '*.tar.gz' -exec tar -xvf '{}' \;
-  # - "printf 'packages: vector-*.cabal\\n' > cabal.project"
+  - "printf 'packages: vector.cabal\\n' > cabal.project"
   - touch cabal.project.local
   - "if ! $NOINSTALLEDCONSTRAINTS; then for pkg in $($HCPKG list --simple-output); do echo $pkg | sed 's/^/constraints: /' | sed 's/-[^-]*$/ installed/' >> cabal.project.local; done; fi"
   - cat cabal.project || true
   - cat cabal.project.local || true
   # this builds all libraries and executables (without tests/benchmarks)
-  - cabal new-build -w ${HC} --disable-tests --disable-benchmarks vector
+  - cabal new-build -w ${HC} --disable-tests # --disable-benchmarks vector
 
   # build & run tests, build benchmarks
-  - cabal new-build -w ${HC} ${TEST} ${BENCH} ${TESTTARGETS}
-  - cabal new-test -w ${HC} ${TEST} ${BENCH} ${TESTTARGETS}
+  - cabal new-build -w ${HC} --enable-tests
+  - cabal new-test -w ${HC} #  ${TEST} ${BENCH} ${TESTTARGETS}
 
   # cabal check
   - cabal check
